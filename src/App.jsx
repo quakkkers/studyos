@@ -1,0 +1,274 @@
+import { useState, useEffect } from 'react';
+import { supabase } from './supabase';
+import { getGlobalStyles } from './styles';
+import AuthPage from './components/AuthPage';
+import Dashboard from './components/Dashboard';
+import ModulePage from './components/ModulePage';
+import LessonPage from './components/LessonPage';
+import SettingsPage from './components/SettingsPage';
+import OnboardingTutorial from './components/OnboardingTutorial';
+import ModuleSetup from './components/ModuleSetup';
+import Toast from './components/Toast';
+import Splash from './components/Splash';
+
+export default function App() {
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [screen, setScreen] = useState('loading');
+  const [modules, setModules] = useState([]);
+  const [activeMod, setActiveMod] = useState(null);
+  const [activeLesson, setActiveLesson] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        loadProfile(session.user.id);
+      } else {
+        setLoading(false);
+        setScreen('auth');
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      (async () => {
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          await loadProfile(session.user.id);
+        } else {
+          setScreen('auth');
+        }
+      })();
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function loadProfile(userId) {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') throw error;
+
+      if (!data) {
+        const newProfile = {
+          id: userId,
+          email: user?.email || '',
+          color_palette: 'ocean',
+          learning_style: {},
+          has_completed_onboarding: false
+        };
+
+        const { error: insertError } = await supabase
+          .from('user_profiles')
+          .insert([newProfile]);
+
+        if (insertError) throw insertError;
+
+        setProfile(newProfile);
+        setScreen('onboarding');
+      } else {
+        setProfile(data);
+        if (!data.has_completed_onboarding) {
+          setScreen('onboarding');
+        } else {
+          await loadModules(userId);
+          setScreen('dash');
+        }
+      }
+    } catch (error) {
+      notify('Failed to load profile', 'err');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadModules(userId) {
+    try {
+      const { data, error } = await supabase
+        .from('modules')
+        .select('*')
+        .eq('user_id', userId)
+        .order('position', { ascending: true });
+
+      if (error) throw error;
+      setModules(data || []);
+    } catch (error) {
+      notify('Failed to load modules', 'err');
+    }
+  }
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    setUser(null);
+    setProfile(null);
+    setModules([]);
+    setScreen('auth');
+  }
+
+  function notify(msg, type = 'ok') {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3200);
+  }
+
+  if (loading || screen === 'loading') return <Splash />;
+
+  if (!user || screen === 'auth') {
+    return (
+      <>
+        <style>{getGlobalStyles()}</style>
+        <AuthPage onSuccess={() => loadProfile(user?.id)} notify={notify} />
+      </>
+    );
+  }
+
+  const currentPalette = profile?.color_palette || 'ocean';
+
+  if (screen === 'onboarding') {
+    return (
+      <>
+        <style>{getGlobalStyles(currentPalette)}</style>
+        <Toast toast={toast} />
+        <OnboardingTutorial
+          profile={profile}
+          onComplete={async () => {
+            await supabase
+              .from('user_profiles')
+              .update({ has_completed_onboarding: true })
+              .eq('id', user.id);
+            await loadModules(user.id);
+            setScreen('dash');
+            notify('Welcome to StudyOS!');
+          }}
+        />
+      </>
+    );
+  }
+
+  if (screen === 'settings') {
+    return (
+      <>
+        <style>{getGlobalStyles(currentPalette)}</style>
+        <Toast toast={toast} />
+        <SettingsPage
+          profile={profile}
+          onBack={() => setScreen('dash')}
+          onUpdate={async (updates) => {
+            try {
+              const { error } = await supabase
+                .from('user_profiles')
+                .update(updates)
+                .eq('id', user.id);
+
+              if (error) throw error;
+              setProfile({ ...profile, ...updates });
+              notify('Settings saved');
+            } catch (error) {
+              notify('Failed to save settings', 'err');
+            }
+          }}
+          onSignOut={signOut}
+          notify={notify}
+        />
+      </>
+    );
+  }
+
+  if (screen === 'setup') {
+    return (
+      <>
+        <style>{getGlobalStyles(currentPalette)}</style>
+        <Toast toast={toast} />
+        <ModuleSetup
+          userId={user.id}
+          onComplete={async (mod) => {
+            await loadModules(user.id);
+            setActiveMod(mod);
+            setScreen('mod');
+            notify(`${mod.name} is ready!`);
+          }}
+          onCancel={() => setScreen('dash')}
+        />
+      </>
+    );
+  }
+
+  if (screen === 'mod' && activeMod) {
+    return (
+      <>
+        <style>{getGlobalStyles(currentPalette)}</style>
+        <Toast toast={toast} />
+        <ModulePage
+          mod={activeMod}
+          userId={user.id}
+          onBack={() => {
+            setScreen('dash');
+            loadModules(user.id);
+          }}
+          onUpdate={async (updated) => {
+            setActiveMod(updated);
+            await loadModules(user.id);
+          }}
+          onOpenLesson={(l) => {
+            setActiveLesson(l);
+            setScreen('lesson');
+          }}
+          notify={notify}
+        />
+      </>
+    );
+  }
+
+  if (screen === 'lesson' && activeLesson && activeMod) {
+    return (
+      <>
+        <style>{getGlobalStyles(currentPalette)}</style>
+        <Toast toast={toast} />
+        <LessonPage
+          lesson={activeLesson}
+          mod={activeMod}
+          userId={user.id}
+          onBack={() => setScreen('mod')}
+          onUpdate={async (ul) => {
+            setActiveLesson(ul);
+            await loadModules(user.id);
+          }}
+          notify={notify}
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <style>{getGlobalStyles(currentPalette)}</style>
+      <Toast toast={toast} />
+      <Dashboard
+        modules={modules}
+        profile={profile}
+        onNew={() => setScreen('setup')}
+        onOpen={(m) => {
+          setActiveMod(m);
+          setScreen('mod');
+        }}
+        onSettings={() => setScreen('settings')}
+        onReorderModules={async (reordered) => {
+          setModules(reordered);
+          for (let i = 0; i < reordered.length; i++) {
+            await supabase
+              .from('modules')
+              .update({ position: i })
+              .eq('id', reordered[i].id);
+          }
+        }}
+        notify={notify}
+      />
+    </>
+  );
+}
