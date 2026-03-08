@@ -20,14 +20,14 @@ StudyOS is a **self-organising, context-aware study companion**. Set it up once 
 | Feature | Description |
 |---|---|
 | 🗓 Module Dashboard | All your subjects in one place with progress tracking and upcoming lessons |
-| 📅 Auto Lesson Calendar | Set your term dates once — every lesson slot is generated automatically |
+| 📅 Auto Lesson Calendar | Set your term dates once, every lesson slot is generated automatically |
 | 🧠 Brain Dump → Notes | Paste raw class notes, get back structured, syllabus-aligned notes |
 | 📋 Contents Page | Auto-generated table of contents per module, updated after every lesson |
 | 🔬 Revise Mode | Chat-based revision that cites which lesson and syllabus section it's drawing from |
-| 📎 File Upload | Upload your syllabus as PDF, TXT, or MD — no copy-pasting required |
+| 📎 File Upload | Upload your syllabus as PDF, TXT, or MD, no copy-pasting required |
 | ⚙️ Custom Instructions | Tell the AI how to behave per module in plain English |
 | 🌙 Light / Dark Mode | Saved to your profile, persists across sessions |
-| 🤷 Learning Style Inference | Select "I don't know yet" — the app watches your habits and suggests your style after 3 lessons |
+| 🤷 Learning Style Inference | Select "I don't know yet", the app watches your habits and suggests your style after 3 lessons |
 
 ---
 
