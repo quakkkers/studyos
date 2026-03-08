@@ -7,11 +7,11 @@ Every AI study tool has the same flaw: you re-explain everything every session. 
 
 StudyOS is a **self-organising, context-aware study companion**. Set it up once per subject and it remembers everything for the rest of the term.
 
-- **Brain dump your notes** during or after class — raw, messy, incomplete — and StudyOS structures them automatically
-- **Syllabus-aware organisation** — notes are mapped to your actual course topics every time
-- **Subject-intelligent outputs** — Spanish lessons get vocab lists; Physics gets key formulas; History gets argument maps
-- **Revision mode** — conversational Q&A powered by your own notes, with citations back to specific lessons and syllabus sections
-- **Learns how you study** — adapts note structure to your learning style over time
+- **Brain dump your notes** during or after class, raw, messy, incomplete, and StudyOS structures them automatically
+- **Syllabus-aware organisation**, notes are mapped to your actual course topics every time
+- **Subject-intelligent outputs**, Spanish lessons get vocab lists; Physics gets key formulas; History gets argument maps
+- **Revision mode**, conversational Q&A powered by your own notes, with citations back to specific lessons and syllabus sections
+- **Learns how you study**, adapts note structure to your learning style over time
 
 ---
 
