@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
 import { MODULE_COLORS, SUBJECT_TYPES, DAYS, EMOJIS } from '../constants';
 
@@ -11,10 +11,14 @@ export default function ModuleEditor({ module, onClose, onUpdate, notify }) {
   const [syllabus, setSyllabus] = useState(module.syllabus || '');
   const [instructions, setInstructions] = useState(module.custom_instructions || '');
   const [terms, setTerms] = useState([]);
+  const [syllabusAttachments, setSyllabusAttachments] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const syllabusFileInputRef = useRef(null);
 
   useEffect(() => {
     loadTerms();
+    loadSyllabusAttachments();
   }, [module.id]);
 
   async function loadTerms() {
@@ -28,6 +32,88 @@ export default function ModuleEditor({ module, onClose, onUpdate, notify }) {
       setTerms(data || []);
     } catch (error) {
       notify('Failed to load terms', 'err');
+    }
+  }
+
+  async function loadSyllabusAttachments() {
+    try {
+      const { data, error } = await supabase
+        .from('syllabus_attachments')
+        .select('*')
+        .eq('module_id', module.id)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setSyllabusAttachments(data || []);
+    } catch (error) {
+      notify('Failed to load syllabus files', 'err');
+    }
+  }
+
+  async function handleSyllabusFileUpload(e) {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    setUploading(true);
+
+    try {
+      for (const file of files) {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const filePath = `syllabus-attachments/${module.id}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('lesson-files')
+          .upload(filePath, file);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('lesson-files')
+          .getPublicUrl(filePath);
+
+        const { error: dbError } = await supabase
+          .from('syllabus_attachments')
+          .insert([{
+            module_id: module.id,
+            file_name: file.name,
+            file_url: publicUrl,
+            file_type: file.type,
+            file_size: file.size
+          }]);
+
+        if (dbError) throw dbError;
+      }
+
+      await loadSyllabusAttachments();
+      notify('Files uploaded successfully');
+    } catch (error) {
+      notify('Failed to upload files', 'err');
+    } finally {
+      setUploading(false);
+      if (syllabusFileInputRef.current) syllabusFileInputRef.current.value = '';
+    }
+  }
+
+  async function deleteSyllabusAttachment(attachmentId, fileUrl) {
+    if (!window.confirm('Delete this file?')) return;
+
+    try {
+      const filePath = fileUrl.split('/lesson-files/')[1];
+
+      await supabase.storage
+        .from('lesson-files')
+        .remove([filePath]);
+
+      await supabase
+        .from('syllabus_attachments')
+        .delete()
+        .eq('id', attachmentId);
+
+      await loadSyllabusAttachments();
+      notify('File deleted');
+    } catch (error) {
+      notify('Failed to delete file', 'err');
     }
   }
 
@@ -310,9 +396,85 @@ export default function ModuleEditor({ module, onClose, onUpdate, notify }) {
           </div>
 
           <div>
-            <label style={{fontSize: 13, fontWeight: 600, color: 'var(--ink2)', display: 'block', marginBottom: 7}}>
-              Syllabus (optional)
-            </label>
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7}}>
+              <label style={{fontSize: 13, fontWeight: 600, color: 'var(--ink2)'}}>
+                Syllabus (optional)
+              </label>
+              <input
+                ref={syllabusFileInputRef}
+                type="file"
+                multiple
+                onChange={handleSyllabusFileUpload}
+                style={{display: 'none'}}
+              />
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => syllabusFileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? 'Uploading...' : '+ Add Files'}
+              </button>
+            </div>
+
+            {syllabusAttachments.length > 0 && (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                marginBottom: 10,
+                padding: '10px 12px',
+                background: 'var(--paper2)',
+                borderRadius: 8
+              }}>
+                {syllabusAttachments.map(att => (
+                  <div
+                    key={att.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '6px 8px',
+                      background: 'var(--white)',
+                      borderRadius: 6,
+                      fontSize: 13
+                    }}
+                  >
+                    <span style={{fontSize: 16}}>
+                      {att.file_type.startsWith('image/') ? '🖼️' : '📎'}
+                    </span>
+                    <div style={{flex: 1, minWidth: 0}}>
+                      <div style={{
+                        color: 'var(--ink)',
+                        fontWeight: 500,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {att.file_name}
+                      </div>
+                      <div style={{fontSize: 11, color: 'var(--ink3)'}}>
+                        {(att.file_size / 1024).toFixed(1)} KB
+                      </div>
+                    </div>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => window.open(att.file_url, '_blank')}
+                      style={{padding: '4px 8px', fontSize: 11}}
+                    >
+                      View
+                    </button>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => deleteSyllabusAttachment(att.id, att.file_url)}
+                      style={{padding: '4px 8px'}}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <textarea
               className="inp"
               value={syllabus}

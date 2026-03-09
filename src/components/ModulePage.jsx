@@ -15,6 +15,8 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
   const [editName, setEditName] = useState(mod.name);
   const [calendarView, setCalendarView] = useState('month');
   const [showEditModule, setShowEditModule] = useState(false);
+  const [creatingLesson, setCreatingLesson] = useState(false);
+  const [newLessonDate, setNewLessonDate] = useState('');
 
   const c = col(mod.color);
 
@@ -90,6 +92,38 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
       notify('Lesson deleted');
     } catch (error) {
       notify('Failed to delete lesson', 'err');
+    }
+  }
+
+  async function createManualLesson() {
+    if (!newLessonDate) {
+      notify('Please select a date', 'err');
+      return;
+    }
+
+    try {
+      const nextLessonNumber = lessons.length + 1;
+
+      const { data, error } = await supabase
+        .from('lessons')
+        .insert([{
+          module_id: mod.id,
+          term_id: null,
+          lesson_number: nextLessonNumber,
+          date: newLessonDate
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      notify('Lesson created');
+      setCreatingLesson(false);
+      setNewLessonDate('');
+      loadTermsAndLessons();
+      onOpenLesson(data);
+    } catch (error) {
+      notify('Failed to create lesson', 'err');
     }
   }
 
@@ -239,9 +273,63 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
 
         {tab === 'lessons' && (
           <div>
-            <p style={{fontSize:11,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:14}}>
-              All Lessons
-            </p>
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14}}>
+              <p style={{fontSize:11,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:"0.1em",margin:0}}>
+                All Lessons
+              </p>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => setCreatingLesson(true)}
+              >
+                + Add Lesson
+              </button>
+            </div>
+
+            {creatingLesson && (
+              <div className="card" style={{padding:'20px', marginBottom:14, background:'var(--paper)'}}>
+                <h3 style={{fontSize:16, marginBottom:12, color:'var(--ink)'}}>Create New Lesson</h3>
+                <div style={{display:'flex', gap:10, alignItems:'center'}}>
+                  <input
+                    type="date"
+                    className="inp"
+                    value={newLessonDate}
+                    onChange={(e) => setNewLessonDate(e.target.value)}
+                    style={{flex:1}}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    onClick={createManualLesson}
+                    disabled={!newLessonDate}
+                  >
+                    Create
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setCreatingLesson(false);
+                      setNewLessonDate('');
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {lessons.length === 0 && !creatingLesson && (
+              <div className="card" style={{padding:"48px 32px",textAlign:"center"}}>
+                <div style={{fontSize:44,marginBottom:14}}>📚</div>
+                <h3 style={{fontSize:19,marginBottom:8}}>No lessons yet</h3>
+                <p style={{color:"var(--ink3)",fontSize:14,marginBottom:20}}>Add terms with dates to generate lessons, or create them manually.</p>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => setCreatingLesson(true)}
+                >
+                  + Create First Lesson
+                </button>
+              </div>
+            )}
+
             {lessons.map(l => (
               <div
                 key={l.id}
