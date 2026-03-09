@@ -87,6 +87,8 @@ export default function App() {
 
   async function loadProfile(userId, shouldRestoreNav = false) {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+
       const { data, error } = await supabase
         .from('user_profiles')
         .select('*')
@@ -98,7 +100,7 @@ export default function App() {
       if (!data) {
         const newProfile = {
           id: userId,
-          email: user?.email || '',
+          email: session?.user?.email || '',
           color_palette: 'ocean',
           learning_style: {},
           has_completed_onboarding: false
@@ -134,6 +136,7 @@ export default function App() {
         }
       }
     } catch (error) {
+      console.error('Profile load error:', error);
       notify('Failed to load profile', 'err');
     } finally {
       setLoading(false);
