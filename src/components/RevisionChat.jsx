@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 
-export default function RevisionChat({ userId, modules, onNavigateToLesson, onClose, notify }) {
+export default function RevisionChat({ userId, modules, moduleId, moduleName, onNavigateToLesson, onClose, notify }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const suggestionPrompts = [
+  const suggestionPrompts = moduleId ? [
+    `What topics from ${moduleName} should I review?`,
+    "Summarize my recent lessons",
+    "What concepts am I struggling with?",
+    "Quiz me on my notes"
+  ] : [
     "What should I revise today?",
     "Show me lessons I haven't reviewed recently",
     "Help me prepare for my upcoming exam",
@@ -22,11 +27,17 @@ export default function RevisionChat({ userId, modules, onNavigateToLesson, onCl
     setLoading(true);
 
     try {
-      const { data: lessons, error } = await supabase
+      let query = supabase
         .from('lessons')
-        .select('*, modules!inner(*)')
-        .eq('modules.user_id', userId)
-        .order('date', { ascending: false });
+        .select('*, modules!inner(*)');
+
+      if (moduleId) {
+        query = query.eq('module_id', moduleId);
+      } else {
+        query = query.eq('modules.user_id', userId);
+      }
+
+      const { data: lessons, error } = await query.order('date', { ascending: false });
 
       if (error) throw error;
 
@@ -72,43 +83,27 @@ Based on the student's question, provide helpful guidance about what to revise, 
     }
   }
 
-  return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0,0,0,0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000,
-      padding: 20
-    }}>
+  const isModal = !!onClose;
+
+  const chatContent = (
+    <>
       <div style={{
-        background: 'var(--white)',
-        borderRadius: 16,
-        width: '100%',
-        maxWidth: 700,
-        maxHeight: '80vh',
+        padding: '20px 24px',
+        borderBottom: '1px solid var(--paper2)',
         display: 'flex',
-        flexDirection: 'column',
-        boxShadow: 'var(--shadow-xl)'
+        justifyContent: 'space-between',
+        alignItems: 'center'
       }}>
-        <div style={{
-          padding: '20px 24px',
-          borderBottom: '1px solid var(--paper2)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <div>
-            <h2 style={{fontSize: 20, marginBottom: 4, color: 'var(--ink)'}}>📚 Revision Assistant</h2>
-            <p style={{fontSize: 13, color: 'var(--ink3)'}}>Ask what to study or get revision guidance</p>
-          </div>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
+        <div>
+          <h2 style={{fontSize: 20, marginBottom: 4, color: 'var(--ink)'}}>
+            {moduleId ? `💬 ${moduleName} Revision` : '📚 Revision Assistant'}
+          </h2>
+          <p style={{fontSize: 13, color: 'var(--ink3)'}}>
+            {moduleId ? 'Ask questions about your lessons and notes' : 'Ask what to study or get revision guidance'}
+          </p>
         </div>
+        {onClose && <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>}
+      </div>
 
         <div style={{
           flex: 1,
@@ -192,7 +187,50 @@ Based on the student's question, provide helpful guidance about what to revise, 
             Send
           </button>
         </div>
+      </>
+    );
+
+  if (isModal) {
+    return (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0,0,0,0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        padding: 20
+      }}>
+        <div style={{
+          background: 'var(--white)',
+          borderRadius: 16,
+          width: '100%',
+          maxWidth: 700,
+          maxHeight: '80vh',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: 'var(--shadow-xl)'
+        }}>
+          {chatContent}
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div style={{
+      background: 'var(--white)',
+      borderRadius: 12,
+      border: '1px solid var(--paper2)',
+      height: '600px',
+      display: 'flex',
+      flexDirection: 'column'
+    }}>
+      {chatContent}
     </div>
   );
 }

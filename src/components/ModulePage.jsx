@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { MODULE_COLORS, SUBJECT_TYPES, CALENDAR_VIEWS } from '../constants';
+import { MODULE_COLORS, SUBJECT_TYPES } from '../constants';
 import ModuleEditor from './ModuleEditor';
+import Calendar from './Calendar';
+import RevisionChat from './RevisionChat';
 import { generateLessonsFromTerms } from '../utils/lessonGenerator';
 
 function col(colorId) {
@@ -14,7 +16,6 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
   const [terms, setTerms] = useState([]);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(mod.name);
-  const [calendarView, setCalendarView] = useState('month');
   const [showEditModule, setShowEditModule] = useState(false);
   const [creatingLesson, setCreatingLesson] = useState(false);
   const [newLessonDate, setNewLessonDate] = useState('');
@@ -24,6 +25,7 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
   const [generateEndDate, setGenerateEndDate] = useState('');
   const [generatingLessons, setGeneratingLessons] = useState(false);
   const [selectedLessons, setSelectedLessons] = useState(new Set());
+  const [selectedDate, setSelectedDate] = useState(null);
 
   const c = col(mod.color);
 
@@ -306,9 +308,9 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
 
           <div style={{display:"flex",gap:0,borderTop:"1px solid var(--paper2)",marginTop:4}}>
             {[
-              ["overview", "🗓 Overview"],
-              ["lessons", "📝 Lessons"],
-              ["calendar", "📅 Calendar"]
+              ["overview", "🗓️ Overview"],
+              ["revise", "💬 Revise"],
+              ["schedule", "⚙️ Schedule"]
             ].map(([id, label]) => (
               <button
                 key={id}
@@ -322,157 +324,179 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
         </div>
       </header>
 
-      <main style={{flex:1,padding:"28px 36px",maxWidth:960,margin:"0 auto",width:"100%"}}>
+      <main style={{flex:1,padding:"28px 36px",maxWidth:1200,margin:"0 auto",width:"100%"}}>
         {tab === 'overview' && (
-          <div>
-            {lessons.length > 0 && (
-              <section className="fu2" style={{marginBottom:32}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-                  <p style={{fontSize:11,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:"0.1em"}}>
-                    Lesson Overview
-                  </p>
-                  <p style={{fontSize:12,color:"var(--ink4)"}}>
-                    {lessons.length} lesson{lessons.length !== 1 ? 's' : ''}
-                  </p>
-                </div>
+          <div style={{display:'grid',gridTemplateColumns:'350px 1fr',gap:24}}>
+            <div>
+              <Calendar
+                lessons={lessons}
+                onSelectDate={setSelectedDate}
+                selectedDate={selectedDate}
+                accentColor={c.accent}
+              />
 
-                <div className="card" style={{padding:0,overflow:"hidden"}}>
-                  <div style={{overflowX:"auto"}}>
-                    <table style={{width:"100%",borderCollapse:"collapse"}}>
-                      <thead>
-                        <tr style={{background:"var(--paper2)",borderBottom:"2px solid var(--paper3)"}}>
-                          <th style={{padding:"14px 18px",textAlign:"left",fontSize:12,fontWeight:700,color:"var(--ink2)",textTransform:"uppercase",letterSpacing:"0.05em"}}>
-                            Date
-                          </th>
-                          <th style={{padding:"14px 18px",textAlign:"left",fontSize:12,fontWeight:700,color:"var(--ink2)",textTransform:"uppercase",letterSpacing:"0.05em"}}>
-                            Topic
-                          </th>
-                          <th style={{padding:"14px 18px",textAlign:"left",fontSize:12,fontWeight:700,color:"var(--ink2)",textTransform:"uppercase",letterSpacing:"0.05em"}}>
-                            Key Points
-                          </th>
-                          <th style={{padding:"14px 18px",textAlign:"center",fontSize:12,fontWeight:700,color:"var(--ink2)",textTransform:"uppercase",letterSpacing:"0.05em",width:80}}>
-                            Status
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {lessons.map((l, idx) => {
-                          const lessonDate = new Date(l.date);
-                          const isToday = lessonDate.toDateString() === new Date().toDateString();
-                          const isPast = lessonDate < new Date() && !isToday;
-                          const hasNotes = l.structured_notes || l.raw_notes;
-                          const keyConcepts = l.key_concepts || [];
-
-                          return (
-                            <tr
-                              key={l.id}
-                              onClick={() => onOpenLesson(l)}
-                              style={{
-                                borderBottom:"1px solid var(--paper2)",
-                                cursor:"pointer",
-                                background: isToday ? "var(--sky-bg)" : "transparent",
-                                transition:"background 0.15s"
-                              }}
-                              onMouseEnter={(e) => {
-                                if (!isToday) e.currentTarget.style.background = "var(--paper)";
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!isToday) e.currentTarget.style.background = "transparent";
-                              }}
-                            >
-                              <td style={{padding:"16px 18px",fontSize:13,color:isPast ? "var(--ink4)" : "var(--ink)",fontWeight:500,verticalAlign:"top"}}>
-                                <div>{lessonDate.toLocaleDateString('en-US', {month:'short', day:'numeric'})}</div>
-                                <div style={{fontSize:11,color:"var(--ink4)",marginTop:2}}>
-                                  {lessonDate.toLocaleDateString('en-US', {weekday:'short'})}
-                                </div>
-                              </td>
-                              <td style={{padding:"16px 18px",fontSize:14,color:isPast ? "var(--ink3)" : "var(--ink2)",fontWeight:500,verticalAlign:"top"}}>
-                                {l.topic || `Lesson ${l.lesson_number}`}
-                              </td>
-                              <td style={{padding:"16px 18px",fontSize:13,color:"var(--ink3)",lineHeight:1.6,verticalAlign:"top"}}>
-                                {l.ai_summary ? (
-                                  <div style={{maxWidth:500}}>{l.ai_summary}</div>
-                                ) : keyConcepts.length > 0 ? (
-                                  <ul style={{margin:0,paddingLeft:20}}>
-                                    {keyConcepts.slice(0,3).map((concept, i) => (
-                                      <li key={i} style={{marginBottom:4}}>{concept}</li>
-                                    ))}
-                                    {keyConcepts.length > 3 && (
-                                      <li style={{color:"var(--ink4)",fontStyle:"italic"}}>+{keyConcepts.length - 3} more</li>
-                                    )}
-                                  </ul>
-                                ) : hasNotes ? (
-                                  <span style={{fontStyle:"italic",color:"var(--ink4)"}}>Click to view notes</span>
-                                ) : (
-                                  <span style={{fontStyle:"italic",color:"var(--ink4)"}}>No notes yet</span>
-                                )}
-                              </td>
-                              <td style={{padding:"16px 18px",textAlign:"center",verticalAlign:"top"}}>
-                                {isToday ? (
-                                  <span className="tag" style={{background:"var(--sky)",color:"var(--sky-text)",fontSize:10}}>
-                                    Today
-                                  </span>
-                                ) : isPast ? (
-                                  hasNotes ? (
-                                    <span style={{fontSize:18}}>✅</span>
-                                  ) : (
-                                    <span style={{fontSize:18,opacity:0.3}}>⭕</span>
-                                  )
-                                ) : (
-                                  <span style={{fontSize:18,opacity:0.2}}>⏳</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </section>
-            )}
-
-            {upcoming.length > 0 && (
-              <section className="fu2" style={{marginBottom:32}}>
-                <p style={{fontSize:11,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:14}}>
-                  Upcoming This Week
-                </p>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12}}>
-                  {upcoming.slice(0, 7).map(l => (
-                    <div
-                      key={l.id}
-                      onClick={() => onOpenLesson(l)}
-                      className="card"
-                      style={{padding:"15px 16px",cursor:"pointer",transition:"all .2s",borderTop:`3px solid ${c.accent}`}}
-                    >
-                      <div style={{fontFamily:"Lora,serif",fontSize:22,color:"var(--ink)",lineHeight:1}}>
-                        {new Date(l.date).getDate()}
-                      </div>
-                      <div style={{fontSize:12,color:"var(--ink3)",marginTop:3}}>
-                        {new Date(l.date).toLocaleDateString('en-US', {weekday:'short', month:'short'})}
-                      </div>
-                      {l.topic && (
-                        <div style={{fontSize:11,color:"var(--ink2)",marginTop:8,fontWeight:500}}>
-                          {l.topic.length > 20 ? l.topic.substring(0,20) + '...' : l.topic}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {lessons.length === 0 && (
-              <div className="card" style={{padding:"48px 32px",textAlign:"center"}}>
-                <div style={{fontSize:44,marginBottom:14}}>📅</div>
-                <h3 style={{fontSize:19,marginBottom:8}}>No lessons yet</h3>
-                <p style={{color:"var(--ink3)",fontSize:14}}>Add terms with dates to generate lessons automatically.</p>
+              <div style={{marginTop:20}}>
+                <button
+                  className="btn btn-primary"
+                  style={{width:'100%'}}
+                  onClick={() => setTab('schedule')}
+                >
+                  + Add Lesson
+                </button>
               </div>
-            )}
+            </div>
+
+            <div>
+              {lessons.length > 0 && (
+                <section className="fu2">
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                    <p style={{fontSize:11,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:"0.1em"}}>
+                      {selectedDate ? `Lessons on ${new Date(selectedDate).toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'})}` : 'All Lessons'}
+                    </p>
+                    <div style={{display:'flex',gap:10,alignItems:'center'}}>
+                      {selectedDate && (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => setSelectedDate(null)}
+                        >
+                          Show All
+                        </button>
+                      )}
+                      <p style={{fontSize:12,color:"var(--ink4)"}}>
+                        {lessons.length} total
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="card" style={{padding:0,overflow:"hidden"}}>
+                    <div style={{overflowX:"auto"}}>
+                      <table style={{width:"100%",borderCollapse:"collapse"}}>
+                        <thead>
+                          <tr style={{background:"var(--paper2)",borderBottom:"2px solid var(--paper3)"}}>
+                            <th style={{padding:"14px 18px",textAlign:"left",fontSize:12,fontWeight:700,color:"var(--ink2)",textTransform:"uppercase",letterSpacing:"0.05em"}}>
+                              Date
+                            </th>
+                            <th style={{padding:"14px 18px",textAlign:"left",fontSize:12,fontWeight:700,color:"var(--ink2)",textTransform:"uppercase",letterSpacing:"0.05em"}}>
+                              Topic
+                            </th>
+                            <th style={{padding:"14px 18px",textAlign:"left",fontSize:12,fontWeight:700,color:"var(--ink2)",textTransform:"uppercase",letterSpacing:"0.05em"}}>
+                              Key Points
+                            </th>
+                            <th style={{padding:"14px 18px",textAlign:"center",fontSize:12,fontWeight:700,color:"var(--ink2)",textTransform:"uppercase",letterSpacing:"0.05em",width:80}}>
+                              Status
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lessons
+                            .filter(l => {
+                              if (!selectedDate) return true;
+                              const lessonDate = new Date(l.date);
+                              const selDate = new Date(selectedDate);
+                              return lessonDate.toDateString() === selDate.toDateString();
+                            })
+                            .map((l, idx) => {
+                            const lessonDate = new Date(l.date);
+                            const isToday = lessonDate.toDateString() === new Date().toDateString();
+                            const isPast = lessonDate < new Date() && !isToday;
+                            const hasNotes = l.structured_notes || l.raw_notes;
+                            const keyConcepts = l.key_concepts || [];
+
+                            return (
+                              <tr
+                                key={l.id}
+                                onClick={() => onOpenLesson(l)}
+                                style={{
+                                  borderBottom:"1px solid var(--paper2)",
+                                  cursor:"pointer",
+                                  background: isToday ? "var(--sky-bg)" : "transparent",
+                                  transition:"background 0.15s"
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!isToday) e.currentTarget.style.background = "var(--paper)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!isToday) e.currentTarget.style.background = "transparent";
+                                }}
+                              >
+                                <td style={{padding:"16px 18px",fontSize:13,color:isPast ? "var(--ink4)" : "var(--ink)",fontWeight:500,verticalAlign:"top"}}>
+                                  <div>{lessonDate.toLocaleDateString('en-US', {month:'short', day:'numeric'})}</div>
+                                  <div style={{fontSize:11,color:"var(--ink4)",marginTop:2}}>
+                                    {lessonDate.toLocaleDateString('en-US', {weekday:'short'})}
+                                  </div>
+                                </td>
+                                <td style={{padding:"16px 18px",fontSize:14,color:isPast ? "var(--ink3)" : "var(--ink2)",fontWeight:500,verticalAlign:"top"}}>
+                                  {l.topic || `Lesson ${l.lesson_number}`}
+                                </td>
+                                <td style={{padding:"16px 18px",fontSize:13,color:"var(--ink3)",lineHeight:1.6,verticalAlign:"top"}}>
+                                  {l.ai_summary ? (
+                                    <div style={{maxWidth:400}}>{l.ai_summary}</div>
+                                  ) : keyConcepts.length > 0 ? (
+                                    <ul style={{margin:0,paddingLeft:20}}>
+                                      {keyConcepts.slice(0,3).map((concept, i) => (
+                                        <li key={i} style={{marginBottom:4}}>{concept}</li>
+                                      ))}
+                                      {keyConcepts.length > 3 && (
+                                        <li style={{color:"var(--ink4)",fontStyle:"italic"}}>+{keyConcepts.length - 3} more</li>
+                                      )}
+                                    </ul>
+                                  ) : hasNotes ? (
+                                    <span style={{fontStyle:"italic",color:"var(--ink4)"}}>Click to view notes</span>
+                                  ) : (
+                                    <span style={{fontStyle:"italic",color:"var(--ink4)"}}>No notes yet</span>
+                                  )}
+                                </td>
+                                <td style={{padding:"16px 18px",textAlign:"center",verticalAlign:"top"}}>
+                                  {isToday ? (
+                                    <span className="tag" style={{background:"var(--sky)",color:"var(--sky-text)",fontSize:10}}>
+                                      Today
+                                    </span>
+                                  ) : isPast ? (
+                                    hasNotes ? (
+                                      <span style={{fontSize:18}}>✅</span>
+                                    ) : (
+                                      <span style={{fontSize:18,opacity:0.3}}>⭕</span>
+                                    )
+                                  ) : (
+                                    <span style={{fontSize:18,opacity:0.2}}>⏳</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {lessons.length === 0 && (
+                <div className="card" style={{padding:"48px 32px",textAlign:"center"}}>
+                  <div style={{fontSize:44,marginBottom:14}}>📅</div>
+                  <h3 style={{fontSize:19,marginBottom:8}}>No lessons yet</h3>
+                  <p style={{color:"var(--ink3)",fontSize:14,marginBottom:20}}>Add terms with dates to generate lessons automatically.</p>
+                  <button className="btn btn-primary" onClick={() => setTab('schedule')}>
+                    Get Started
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {tab === 'lessons' && (
+        {tab === 'revise' && (
+          <div>
+            <RevisionChat
+              moduleId={mod.id}
+              moduleName={mod.name}
+              userId={userId}
+              notify={notify}
+            />
+          </div>
+        )}
+
+        {tab === 'schedule' && (
           <div>
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14}}>
               <p style={{fontSize:11,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:"0.1em",margin:0}}>
@@ -733,7 +757,7 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
           </div>
         )}
 
-        {tab === 'calendar' && (
+        {tab === 'old_calendar_view' && (
           <div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
               <p style={{fontSize:11,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:"0.1em"}}>
