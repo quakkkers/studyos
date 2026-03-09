@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { MODULE_COLORS, SUBJECT_TYPES, CALENDAR_VIEWS } from '../constants';
 import ModuleEditor from './ModuleEditor';
+import { generateLessonsFromTerms } from '../utils/lessonGenerator';
 
 function col(colorId) {
   return MODULE_COLORS.find(c => c.id === colorId) || MODULE_COLORS[0];
@@ -19,6 +20,7 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
   const [newLessonDate, setNewLessonDate] = useState('');
   const [showLessonDayConfig, setShowLessonDayConfig] = useState(false);
   const [tempLessonDay, setTempLessonDay] = useState(mod.lesson_day || '');
+  const [generatingLessons, setGeneratingLessons] = useState(false);
 
   const c = col(mod.color);
 
@@ -129,6 +131,61 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
     }
   }
 
+  async function generateRecurringLessons() {
+    if (!mod.lesson_day) {
+      notify('Please set a lesson day first', 'err');
+      return;
+    }
+
+    if (terms.length === 0) {
+      notify('Please add terms first (via Edit Module)', 'err');
+      return;
+    }
+
+    setGeneratingLessons(true);
+
+    try {
+      const lessonsToCreate = generateLessonsFromTerms(terms, mod.lesson_day);
+
+      if (lessonsToCreate.length === 0) {
+        notify('No lessons to generate', 'err');
+        return;
+      }
+
+      const existingDates = new Set(lessons.map(l => l.date));
+      const newLessons = lessonsToCreate.filter(l => !existingDates.has(l.date));
+
+      if (newLessons.length === 0) {
+        notify('All lessons already exist');
+        return;
+      }
+
+      const maxLessonNumber = lessons.length > 0
+        ? Math.max(...lessons.map(l => l.lesson_number || 0))
+        : 0;
+
+      const lessonInserts = newLessons.map((l, index) => ({
+        module_id: mod.id,
+        term_id: l.term_id,
+        lesson_number: maxLessonNumber + index + 1,
+        date: l.date
+      }));
+
+      const { error } = await supabase
+        .from('lessons')
+        .insert(lessonInserts);
+
+      if (error) throw error;
+
+      notify(`Generated ${newLessons.length} new lessons`);
+      await loadTermsAndLessons();
+    } catch (error) {
+      notify('Failed to generate lessons', 'err');
+    } finally {
+      setGeneratingLessons(false);
+    }
+  }
+
   async function saveLessonDay() {
     try {
       const { error } = await supabase
@@ -137,9 +194,42 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
         .eq('id', mod.id);
 
       if (error) throw error;
+
+      if (tempLessonDay && terms.length > 0) {
+        const lessonsToCreate = generateLessonsFromTerms(terms, tempLessonDay);
+
+        if (lessonsToCreate.length > 0) {
+          const existingDates = new Set(lessons.map(l => l.date));
+          const newLessons = lessonsToCreate.filter(l => !existingDates.has(l.date));
+
+          if (newLessons.length > 0) {
+            const maxLessonNumber = lessons.length > 0
+              ? Math.max(...lessons.map(l => l.lesson_number || 0))
+              : 0;
+
+            const lessonInserts = newLessons.map((l, index) => ({
+              module_id: mod.id,
+              term_id: l.term_id,
+              lesson_number: maxLessonNumber + index + 1,
+              date: l.date
+            }));
+
+            const { error: insertError } = await supabase
+              .from('lessons')
+              .insert(lessonInserts);
+
+            if (insertError) throw insertError;
+
+            notify(`Generated ${newLessons.length} new lessons`);
+          } else {
+            notify('No new lessons to generate');
+          }
+        }
+      }
+
       onUpdate({ ...mod, lesson_day: tempLessonDay });
       setShowLessonDayConfig(false);
-      notify('Lesson day updated');
+      await loadTermsAndLessons();
     } catch (error) {
       notify('Failed to update lesson day', 'err');
     }
@@ -302,6 +392,15 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
                 >
                   Set Lesson Day
                 </button>
+                {mod.lesson_day && terms.length > 0 && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={generateRecurringLessons}
+                    disabled={generatingLessons}
+                  >
+                    {generatingLessons ? 'Generating...' : '🔄 Generate Lessons'}
+                  </button>
+                )}
                 <button
                   className="btn btn-primary btn-sm"
                   onClick={() => setCreatingLesson(true)}
@@ -315,7 +414,7 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
               <div className="card" style={{padding:'20px', marginBottom:14, background:'var(--paper)'}}>
                 <h3 style={{fontSize:16, marginBottom:12, color:'var(--ink)'}}>Set Recurring Lesson Day</h3>
                 <p style={{fontSize:13, color:'var(--ink3)', marginBottom:14}}>
-                  Choose which day of the week lessons occur. This will be used to auto-generate lessons based on term dates.
+                  Choose which day of the week lessons occur. If you have terms configured, lessons will be automatically generated for all matching days within those term dates.
                 </p>
                 <div style={{display:'flex', gap:10, alignItems:'center'}}>
                   <select
@@ -338,7 +437,7 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
                     onClick={saveLessonDay}
                     disabled={!tempLessonDay}
                   >
-                    Save
+                    {terms.length > 0 ? 'Save & Generate' : 'Save'}
                   </button>
                   <button
                     className="btn btn-ghost"
@@ -350,6 +449,11 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
                     Cancel
                   </button>
                 </div>
+                {terms.length === 0 && (
+                  <p style={{fontSize:12, color:'var(--ink3)', marginTop:10, fontStyle:'italic'}}>
+                    Note: You need to add terms first (via Edit Module) to auto-generate lessons.
+                  </p>
+                )}
               </div>
             )}
 
