@@ -239,38 +239,38 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
 
     const userMessage = { role: 'user', content: chatInput };
     setChatMessages(prev => [...prev, userMessage]);
+    const question = chatInput;
     setChatInput('');
     setChatLoading(true);
 
     try {
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-notes`;
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/enhance-notes`;
       const headers = {
         'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         'Content-Type': 'application/json',
       };
 
-      const context = `Lesson Notes: ${notes || dump}\n\nQuestion: ${chatInput}`;
-
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          brainDump: context,
-          moduleName: mod.name,
-          syllabus: mod.syllabus,
-          customInstructions: 'Answer the student\'s question based on the lesson notes provided.'
+          notes: notes || dump || 'No notes available yet.',
+          topic: topic || mod.name,
+          customPrompt: question
         })
       });
 
       const data = await response.json();
 
-      if (data.notes) {
-        setChatMessages(prev => [...prev, { role: 'assistant', content: data.notes }]);
-      } else {
-        throw new Error('No response generated');
+      if (data.error) {
+        throw new Error(data.error);
       }
+
+      const responseText = data.fullResponse || data.enhancedNotes || 'No response generated';
+      setChatMessages(prev => [...prev, { role: 'assistant', content: responseText }]);
     } catch (error) {
-      notify('Failed to get response', 'err');
+      notify(error.message || 'Failed to get response', 'err');
+      setChatMessages(prev => prev.slice(0, -1));
     } finally {
       setChatLoading(false);
     }
@@ -619,7 +619,8 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
             )}
 
             {notes && (
-              <div className="fu">
+              <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:24}}>
+                <div className="fu">
                 <div style={{marginBottom:16,display:"flex",alignItems:"center",gap:12}}>
                   <input
                     type="text"
@@ -765,6 +766,82 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
                     )}
                   </div>
                 )}
+                </div>
+
+                <div style={{display:"flex",flexDirection:"column",gap:16}}>
+                  <div className="card" style={{padding:"20px"}}>
+                    <h3 style={{fontSize:15,fontWeight:600,marginBottom:12,color:"var(--ink)"}}>✨ AI Assistant</h3>
+                    <p style={{fontSize:13,color:"var(--ink3)",marginBottom:16,lineHeight:1.6}}>
+                      Enhance your notes with AI
+                    </p>
+
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => generateSummaryFromNotes(notes)}
+                        disabled={generatingSummary}
+                        style={{fontSize:13,justifyContent:"flex-start"}}
+                      >
+                        {generatingSummary ? '⏳ Generating...' : '📝 Generate Summary'}
+                      </button>
+
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => {
+                          setChatInput('Organize these notes by grouping similar concepts together');
+                          setTab('chat');
+                        }}
+                        style={{fontSize:13,justifyContent:"flex-start"}}
+                      >
+                        🗂️ Group Concepts
+                      </button>
+
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => {
+                          setChatInput('Search online for additional information about these topics and enhance my notes');
+                          setTab('chat');
+                        }}
+                        style={{fontSize:13,justifyContent:"flex-start"}}
+                      >
+                        🔍 Search & Enhance
+                      </button>
+
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => {
+                          setChatInput('Create a concise study guide from these notes');
+                          setTab('chat');
+                        }}
+                        style={{fontSize:13,justifyContent:"flex-start"}}
+                      >
+                        📚 Study Guide
+                      </button>
+
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => {
+                          setChatInput('Explain the main concepts in simpler terms');
+                          setTab('chat');
+                        }}
+                        style={{fontSize:13,justifyContent:"flex-start"}}
+                      >
+                        💡 Simplify
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="card" style={{padding:"20px"}}>
+                    <h3 style={{fontSize:15,fontWeight:600,marginBottom:12,color:"var(--ink)"}}>📊 Quick Stats</h3>
+                    <div style={{fontSize:13,color:"var(--ink2)",lineHeight:2}}>
+                      <div>Words: <strong>{notes.split(/\s+/).length}</strong></div>
+                      <div>Characters: <strong>{notes.length}</strong></div>
+                      {keyConcepts.length > 0 && (
+                        <div>Key Concepts: <strong>{keyConcepts.length}</strong></div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
