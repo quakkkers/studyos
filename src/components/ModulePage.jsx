@@ -678,29 +678,70 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
 }
 
 function CalendarView({ lessons, view, onOpenLesson }) {
+  const now = new Date();
+  const sortedLessons = [...lessons].sort((a, b) => new Date(a.date) - new Date(b.date));
+
   if (view === 'year') {
-    const months = {};
-    lessons.forEach(l => {
-      const month = new Date(l.date).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-      if (!months[month]) months[month] = [];
-      months[month].push(l);
+    const yearMonths = {};
+    sortedLessons.forEach(l => {
+      const d = new Date(l.date);
+      const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`;
+      const monthYear = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      if (!yearMonths[key]) yearMonths[key] = { label: monthYear, lessons: [], date: d };
+      yearMonths[key].lessons.push(l);
     });
 
+    const sortedMonths = Object.entries(yearMonths).sort((a, b) => new Date(a[1].date) - new Date(b[1].date));
+
     return (
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:16}}>
-        {Object.entries(months).map(([month, monthLessons]) => (
-          <div key={month} className="card" style={{padding:"16px 18px"}}>
-            <h3 style={{fontSize:15,marginBottom:12,color:"var(--ink)"}}>{month}</h3>
-            <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {monthLessons.map(l => (
-                <div
-                  key={l.id}
-                  onClick={() => onOpenLesson(l)}
-                  style={{fontSize:13,color:"var(--ink2)",cursor:"pointer",padding:"6px 8px",borderRadius:6,background:"var(--paper2)"}}
-                >
-                  {new Date(l.date).getDate()} {new Date(l.date).toLocaleDateString('en-GB', {weekday:'short'})}
-                </div>
-              ))}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:16}}>
+        {sortedMonths.map(([key, data]) => (
+          <div key={key} className="card" style={{padding:"18px 20px"}}>
+            <h3 style={{fontSize:16,marginBottom:14,color:"var(--ink)",fontWeight:600}}>{data.label}</h3>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {data.lessons.map(l => {
+                const lessonDate = new Date(l.date);
+                const isToday = lessonDate.toDateString() === now.toDateString();
+                const isPast = lessonDate < now && !isToday;
+
+                return (
+                  <div
+                    key={l.id}
+                    onClick={() => onOpenLesson(l)}
+                    style={{
+                      fontSize:13,
+                      color: isPast ? "var(--ink4)" : "var(--ink2)",
+                      cursor:"pointer",
+                      padding:"10px 12px",
+                      borderRadius:8,
+                      background: isToday ? "var(--primary)" : "var(--paper2)",
+                      border: isToday ? "none" : "1px solid var(--paper3)",
+                      fontWeight: isToday ? 500 : 400,
+                      display:"flex",
+                      justifyContent:"space-between",
+                      alignItems:"center",
+                      transition: "all 0.15s"
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isToday) {
+                        e.currentTarget.style.background = "var(--paper3)";
+                        e.currentTarget.style.borderColor = "var(--ink4)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isToday) {
+                        e.currentTarget.style.background = "var(--paper2)";
+                        e.currentTarget.style.borderColor = "var(--paper3)";
+                      }
+                    }}
+                  >
+                    <span style={{color: isToday ? "#fff" : "inherit"}}>
+                      {lessonDate.toLocaleDateString('en-US', {weekday:'short', day:'numeric'})}
+                    </span>
+                    {isToday && <span style={{fontSize:11,color:"#fff",opacity:0.9}}>Today</span>}
+                  </div>
+                );
+              })}
             </div>
           </div>
         ))}
@@ -708,23 +749,148 @@ function CalendarView({ lessons, view, onOpenLesson }) {
     );
   }
 
+  if (view === 'month') {
+    const monthWeeks = {};
+    sortedLessons.forEach(l => {
+      const d = new Date(l.date);
+      const startOfYear = new Date(d.getFullYear(), 0, 1);
+      const weekNum = Math.ceil(((d - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+      const monthYear = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      const weekKey = `${monthYear} - Week ${weekNum}`;
+
+      if (!monthWeeks[weekKey]) monthWeeks[weekKey] = { lessons: [], minDate: d };
+      monthWeeks[weekKey].lessons.push(l);
+      if (d < monthWeeks[weekKey].minDate) monthWeeks[weekKey].minDate = d;
+    });
+
+    const sortedWeeks = Object.entries(monthWeeks).sort((a, b) => a[1].minDate - b[1].minDate);
+
+    return (
+      <div style={{display:"flex",flexDirection:"column",gap:16}}>
+        {sortedWeeks.map(([weekLabel, data]) => (
+          <div key={weekLabel}>
+            <p style={{fontSize:12,fontWeight:600,color:"var(--ink3)",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.05em"}}>
+              {weekLabel}
+            </p>
+            <div style={{display:"grid",gap:10}}>
+              {data.lessons.map(l => {
+                const lessonDate = new Date(l.date);
+                const isToday = lessonDate.toDateString() === now.toDateString();
+                const isPast = lessonDate < now && !isToday;
+
+                return (
+                  <div
+                    key={l.id}
+                    onClick={() => onOpenLesson(l)}
+                    className="card"
+                    style={{
+                      padding:"16px 20px",
+                      cursor:"pointer",
+                      display:"flex",
+                      gap:16,
+                      alignItems:"center",
+                      borderLeft: isToday ? "4px solid var(--primary)" : isPast ? "4px solid var(--paper3)" : "4px solid var(--sky)",
+                      background: isToday ? "var(--paper2)" : "var(--white)"
+                    }}
+                  >
+                    <div style={{minWidth:90}}>
+                      <div style={{fontSize:15,fontWeight:600,color: isPast ? "var(--ink4)" : "var(--ink)"}}>
+                        {lessonDate.toLocaleDateString('en-US', {month:'short', day:'numeric'})}
+                      </div>
+                      <div style={{fontSize:12,color: isPast ? "var(--ink4)" : "var(--ink3)",marginTop:2}}>
+                        {lessonDate.toLocaleDateString('en-US', {weekday:'short'})}
+                      </div>
+                    </div>
+                    <div style={{flex:1,fontSize:13,color: isPast ? "var(--ink4)" : "var(--ink2)"}}>
+                      {l.topic || 'Lesson'}
+                    </div>
+                    {isToday && (
+                      <span className="tag" style={{background:"var(--primary)",color:"#fff",fontSize:11}}>
+                        Today
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const weekGroups = {};
+  sortedLessons.forEach(l => {
+    const d = new Date(l.date);
+    const startOfWeek = new Date(d);
+    startOfWeek.setDate(d.getDate() - d.getDay());
+    const weekKey = startOfWeek.toISOString().split('T')[0];
+
+    if (!weekGroups[weekKey]) {
+      weekGroups[weekKey] = {
+        start: new Date(startOfWeek),
+        lessons: []
+      };
+    }
+    weekGroups[weekKey].lessons.push(l);
+  });
+
+  const sortedWeeks = Object.entries(weekGroups).sort((a, b) => a[1].start - b[1].start);
+
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {lessons.map(l => (
-        <div
-          key={l.id}
-          onClick={() => onOpenLesson(l)}
-          className="card"
-          style={{padding:"14px 18px",cursor:"pointer",display:"flex",gap:12,alignItems:"center"}}
-        >
-          <div style={{fontSize:13,fontWeight:600,color:"var(--ink)",minWidth:120}}>
-            {new Date(l.date).toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'})}
+    <div style={{display:"flex",flexDirection:"column",gap:20}}>
+      {sortedWeeks.map(([key, data]) => {
+        const weekEnd = new Date(data.start);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        const weekLabel = `${data.start.toLocaleDateString('en-US', {month:'short', day:'numeric'})} - ${weekEnd.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'})}`;
+
+        return (
+          <div key={key}>
+            <p style={{fontSize:13,fontWeight:600,color:"var(--ink2)",marginBottom:12}}>
+              {weekLabel}
+            </p>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:8}}>
+              {[0,1,2,3,4,5,6].map(dayOffset => {
+                const date = new Date(data.start);
+                date.setDate(date.getDate() + dayOffset);
+                const dateStr = date.toISOString().split('T')[0];
+                const dayLessons = data.lessons.filter(l => l.date === dateStr);
+                const isToday = date.toDateString() === now.toDateString();
+                const isPast = date < now && !isToday;
+
+                return (
+                  <div
+                    key={dayOffset}
+                    style={{
+                      padding:"12px 8px",
+                      borderRadius:8,
+                      background: isToday ? "var(--primary)" : dayLessons.length > 0 ? "var(--sky)" : "var(--paper2)",
+                      border: "1px solid",
+                      borderColor: isToday ? "var(--primary)" : dayLessons.length > 0 ? "var(--sky)" : "var(--paper3)",
+                      minHeight:80,
+                      cursor: dayLessons.length > 0 ? "pointer" : "default",
+                      opacity: isPast && dayLessons.length === 0 ? 0.4 : 1
+                    }}
+                    onClick={() => dayLessons.length > 0 && onOpenLesson(dayLessons[0])}
+                  >
+                    <div style={{fontSize:11,fontWeight:600,color: isToday ? "#fff" : isPast ? "var(--ink4)" : "var(--ink3)",marginBottom:6}}>
+                      {date.toLocaleDateString('en-US', {weekday:'short'})}
+                    </div>
+                    <div style={{fontSize:16,fontWeight:600,color: isToday ? "#fff" : isPast ? "var(--ink4)" : "var(--ink)"}}>
+                      {date.getDate()}
+                    </div>
+                    {dayLessons.length > 0 && (
+                      <div style={{fontSize:10,marginTop:6,color: isToday ? "#fff" : "var(--ink3)",opacity:0.8}}>
+                        {dayLessons.length} lesson{dayLessons.length !== 1 ? 's' : ''}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div style={{fontSize:13,color:"var(--ink3)"}}>
-            {new Date(l.date).toLocaleDateString('en-GB', {weekday:'long'})}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
