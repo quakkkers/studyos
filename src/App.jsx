@@ -34,11 +34,13 @@ export default function App() {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       (async () => {
         setUser(session?.user ?? null);
         if (session?.user) {
-          await loadProfile(session.user.id);
+          if (event === 'SIGNED_IN') {
+            await loadProfile(session.user.id);
+          }
         } else {
           setScreen('auth');
         }
