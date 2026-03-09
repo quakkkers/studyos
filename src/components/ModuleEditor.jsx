@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
 import { MODULE_COLORS, SUBJECT_TYPES, DAYS, EMOJIS } from '../constants';
+import { generateLessonsFromTerms } from '../utils/lessonGenerator';
 
 export default function ModuleEditor({ module, onClose, onUpdate, notify }) {
   const [name, setName] = useState(module.name);
@@ -136,9 +137,10 @@ export default function ModuleEditor({ module, onClose, onUpdate, notify }) {
 
       if (moduleError) throw moduleError;
 
+      const updatedTerms = [];
       for (const term of terms) {
         if (term.id) {
-          await supabase
+          const { data } = await supabase
             .from('terms')
             .update({
               name: term.name,
@@ -146,9 +148,13 @@ export default function ModuleEditor({ module, onClose, onUpdate, notify }) {
               end_date: term.end_date,
               position: term.position
             })
-            .eq('id', term.id);
+            .eq('id', term.id)
+            .select()
+            .single();
+
+          if (data) updatedTerms.push(data);
         } else {
-          await supabase
+          const { data } = await supabase
             .from('terms')
             .insert([{
               module_id: module.id,
@@ -156,7 +162,31 @@ export default function ModuleEditor({ module, onClose, onUpdate, notify }) {
               start_date: term.start_date,
               end_date: term.end_date,
               position: term.position
-            }]);
+            }])
+            .select()
+            .single();
+
+          if (data) updatedTerms.push(data);
+        }
+      }
+
+      if (lessonDay && updatedTerms.length > 0) {
+        await supabase
+          .from('lessons')
+          .delete()
+          .eq('module_id', module.id);
+
+        const lessonsToCreate = generateLessonsFromTerms(updatedTerms, lessonDay);
+
+        if (lessonsToCreate.length > 0) {
+          const lessonInserts = lessonsToCreate.map(l => ({
+            module_id: module.id,
+            term_id: l.term_id,
+            lesson_number: l.lesson_number,
+            date: l.date
+          }));
+
+          await supabase.from('lessons').insert(lessonInserts);
         }
       }
 

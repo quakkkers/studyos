@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../supabase';
 import { MODULE_COLORS, SUBJECT_TYPES, DAYS, EMOJIS } from '../constants';
+import { generateLessonsFromTerms } from '../utils/lessonGenerator';
 
 export default function ModuleSetup({ userId, onComplete, onCancel }) {
   const [step, setStep] = useState(0);
@@ -46,7 +47,27 @@ export default function ModuleSetup({ userId, onComplete, onCancel }) {
             position: i
           }));
 
-          await supabase.from('terms').insert(termInserts);
+          const { data: insertedTerms, error: termsError } = await supabase
+            .from('terms')
+            .insert(termInserts)
+            .select();
+
+          if (termsError) throw termsError;
+
+          if (d.lessonDay && insertedTerms) {
+            const lessonsToCreate = generateLessonsFromTerms(insertedTerms, d.lessonDay);
+
+            if (lessonsToCreate.length > 0) {
+              const lessonInserts = lessonsToCreate.map(l => ({
+                module_id: inserted.id,
+                term_id: l.term_id,
+                lesson_number: l.lesson_number,
+                date: l.date
+              }));
+
+              await supabase.from('lessons').insert(lessonInserts);
+            }
+          }
         }
 
         onComplete(inserted);
