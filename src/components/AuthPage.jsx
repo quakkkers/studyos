@@ -34,7 +34,7 @@ export default function AuthPage({ onSuccess, notify }) {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: 'https://studyoss-ruddy.vercel.app'
+          redirectTo: 'https://quakkkers-studyos-im-zpsp.bolt.host'
         }
       });
       if (error) throw error;
