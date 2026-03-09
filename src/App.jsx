@@ -67,23 +67,10 @@ export default function App() {
       })();
     });
 
-    const handleVisibilityChange = async () => {
-      if (!document.hidden && user) {
-        const navState = loadNavigationState();
-        if (navState && navState.screen !== 'auth' && navState.screen !== 'loading' && navState.screen !== screen) {
-          await loadModules(user.id);
-          await restoreNavigationState(navState, user.id);
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
       subscription.unsubscribe();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [user, screen]);
+  }, []);
 
   async function loadProfile(userId, shouldRestoreNav = false) {
     try {
@@ -127,17 +114,16 @@ export default function App() {
             const navState = loadNavigationState();
             if (navState && navState.screen !== 'auth' && navState.screen !== 'loading') {
               await restoreNavigationState(navState, userId);
-            } else {
-              setScreen('dash');
+              return;
             }
-          } else {
-            setScreen('dash');
           }
+
+          setScreen('dash');
         }
       }
     } catch (error) {
       console.error('Profile load error:', error);
-      notify('Failed to load profile', 'err');
+      setScreen('dash');
     } finally {
       setLoading(false);
     }
