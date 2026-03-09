@@ -10,6 +10,7 @@ import OnboardingTutorial from './components/OnboardingTutorial';
 import ModuleSetup from './components/ModuleSetup';
 import Toast from './components/Toast';
 import Splash from './components/Splash';
+import RevisionChat from './components/RevisionChat';
 
 export default function App() {
   const [loading, setLoading] = useState(true);
@@ -20,6 +21,7 @@ export default function App() {
   const [activeMod, setActiveMod] = useState(null);
   const [activeLesson, setActiveLesson] = useState(null);
   const [toast, setToast] = useState(null);
+  const [showRevisionChat, setShowRevisionChat] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -258,6 +260,7 @@ export default function App() {
           setScreen('mod');
         }}
         onSettings={() => setScreen('settings')}
+        onOpenRevisionChat={() => setShowRevisionChat(true)}
         onReorderModules={async (reordered) => {
           setModules(reordered);
           for (let i = 0; i < reordered.length; i++) {
@@ -269,6 +272,19 @@ export default function App() {
         }}
         notify={notify}
       />
+      {showRevisionChat && (
+        <RevisionChat
+          userId={user.id}
+          modules={modules}
+          onNavigateToLesson={(lesson) => {
+            setActiveLesson(lesson);
+            setScreen('lesson');
+            setShowRevisionChat(false);
+          }}
+          onClose={() => setShowRevisionChat(false)}
+          notify={notify}
+        />
+      )}
     </>
   );
 }

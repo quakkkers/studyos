@@ -5,7 +5,7 @@ function col(colorId) {
   return MODULE_COLORS.find(c => c.id === colorId) || MODULE_COLORS[0];
 }
 
-export default function Dashboard({ modules, profile, onNew, onOpen, onSettings, onReorderModules, notify }) {
+export default function Dashboard({ modules, profile, onNew, onOpen, onSettings, onReorderModules, notify, onOpenRevisionChat }) {
   const [draggedIndex, setDraggedIndex] = useState(null);
 
   const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -42,6 +42,7 @@ export default function Dashboard({ modules, profile, onNew, onOpen, onSettings,
           <p style={{fontSize:13,color:"var(--ink3)"}}>{today}</p>
         </div>
         <div style={{display:"flex",gap:10}}>
+          <button className="btn btn-ghost fu" onClick={onOpenRevisionChat}>📚 Revision Assistant</button>
           <button className="btn btn-ghost fu" onClick={onSettings}>⚙️ Settings</button>
           <button className="btn btn-primary btn-lg fu" onClick={onNew}>+ New Module</button>
         </div>

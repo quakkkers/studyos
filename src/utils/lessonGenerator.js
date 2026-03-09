@@ -22,8 +22,8 @@ export function generateLessonsFromTerms(terms, lessonDay) {
   terms.forEach(term => {
     if (!term.start_date || !term.end_date) return;
 
-    const startDate = new Date(term.start_date);
-    const endDate = new Date(term.end_date);
+    const startDate = new Date(term.start_date + 'T00:00:00');
+    const endDate = new Date(term.end_date + 'T00:00:00');
 
     let currentDate = new Date(startDate);
     while (currentDate.getDay() !== targetDay) {
@@ -31,10 +31,14 @@ export function generateLessonsFromTerms(terms, lessonDay) {
     }
 
     while (currentDate <= endDate) {
+      const year = currentDate.getFullYear();
+      const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+      const day = String(currentDate.getDate()).padStart(2, '0');
+
       lessons.push({
         term_id: term.id || null,
         lesson_number: lessonNumber++,
-        date: currentDate.toISOString().split('T')[0]
+        date: `${year}-${month}-${day}`
       });
 
       currentDate.setDate(currentDate.getDate() + 7);

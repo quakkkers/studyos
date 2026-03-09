@@ -15,6 +15,10 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
   const [uploading, setUploading] = useState(false);
   const [generatingNotes, setGeneratingNotes] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState('');
+  const [showChat, setShowChat] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
   const fileInputRef = useRef(null);
   const generateTimeoutRef = useRef(null);
 
@@ -166,12 +170,55 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
 
       onUpdate({ ...lesson, raw_notes: dump, structured_notes: notesToSave });
       setNotes(notesToSave);
+      setAiSuggestion('');
       setTab('notes');
       notify('Notes saved');
     } catch (error) {
       notify('Failed to save notes', 'err');
     } finally {
       setProcessing(false);
+    }
+  }
+
+  async function sendChatMessage() {
+    if (!chatInput.trim()) return;
+
+    const userMessage = { role: 'user', content: chatInput };
+    setChatMessages(prev => [...prev, userMessage]);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-notes`;
+      const headers = {
+        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      };
+
+      const context = `Lesson Notes: ${notes || dump}\n\nQuestion: ${chatInput}`;
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          brainDump: context,
+          moduleName: mod.name,
+          syllabus: mod.syllabus,
+          customInstructions: 'Answer the student\'s question based on the lesson notes provided.'
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.notes) {
+        setChatMessages(prev => [...prev, { role: 'assistant', content: data.notes }]);
+      } else {
+        throw new Error('No response generated');
+      }
+    } catch (error) {
+      notify('Failed to get response', 'err');
+    } finally {
+      setChatLoading(false);
     }
   }
 
@@ -204,7 +251,8 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
       <div style={{padding:"0 36px",background:"var(--white)",borderBottom:"1px solid var(--paper2)",display:"flex",gap:0}}>
         {[
           ["dump", "🧠 Brain Dump"],
-          ["notes", "📝 Notes"]
+          ["notes", "📝 Notes"],
+          ["chat", "💬 Chat"]
         ].map(([id, label]) => (
           <button
             key={id}
@@ -426,18 +474,121 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
               <div className="card fu" style={{padding:"32px 36px"}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:22,paddingBottom:16,borderBottom:"1px solid var(--paper2)"}}>
                   <span style={{fontSize:22}}>{mod.emoji}</span>
-                  <div>
+                  <div style={{flex:1}}>
                     <div style={{fontFamily:"Lora,serif",fontSize:16,color:"var(--ink)"}}>
                       {date.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'})}
                     </div>
                     <div style={{fontSize:12,color:c.text,fontWeight:500}}>{mod.name}</div>
                   </div>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setTab('dump')}>✏️ Edit</button>
                 </div>
                 <div style={{fontSize:14,color:"var(--ink2)",lineHeight:1.85,whiteSpace:"pre-wrap"}}>
                   {notes}
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {tab === 'chat' && (
+          <div className="fu">
+            <h2 style={{fontSize:21,marginBottom:6,color:"var(--ink)"}}>Lesson Chat</h2>
+            <p style={{fontSize:14,color:"var(--ink3)",lineHeight:1.65,marginBottom:20}}>
+              Ask questions about this lesson's content
+            </p>
+
+            <div style={{
+              display:"flex",
+              flexDirection:"column",
+              height:"500px",
+              background:"var(--white)",
+              border:"1px solid var(--paper2)",
+              borderRadius:12
+            }}>
+              <div style={{
+                flex:1,
+                overflowY:"auto",
+                padding:"20px",
+                display:"flex",
+                flexDirection:"column",
+                gap:16
+              }}>
+                {chatMessages.length === 0 && (
+                  <div style={{textAlign:"center",padding:"50px 20px",color:"var(--ink3)"}}>
+                    <div style={{fontSize:40,marginBottom:12}}>💬</div>
+                    <p style={{fontSize:14,marginBottom:16}}>Ask me anything about this lesson!</p>
+                    <div style={{display:"flex",flexDirection:"column",gap:8,maxWidth:300,margin:"0 auto"}}>
+                      {[
+                        "Explain the main concepts",
+                        "What are the key takeaways?",
+                        "Give me practice questions"
+                      ].map(suggestion => (
+                        <button
+                          key={suggestion}
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => setChatInput(suggestion)}
+                          style={{fontSize:12}}
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {chatMessages.map((msg, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                      maxWidth: '75%',
+                      padding: '12px 16px',
+                      borderRadius: 12,
+                      background: msg.role === 'user' ? 'var(--primary)' : 'var(--paper2)',
+                      color: msg.role === 'user' ? '#fff' : 'var(--ink)',
+                      fontSize: 14,
+                      lineHeight: 1.6,
+                      whiteSpace: 'pre-wrap'
+                    }}
+                  >
+                    {msg.content}
+                  </div>
+                ))}
+
+                {chatLoading && (
+                  <div style={{alignSelf:"flex-start",padding:"12px 16px"}}>
+                    <div style={{display:"flex",gap:6}}>
+                      <span className="dot" />
+                      <span className="dot" />
+                      <span className="dot" />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div style={{
+                padding:"16px",
+                borderTop:"1px solid var(--paper2)",
+                display:"flex",
+                gap:10
+              }}>
+                <input
+                  className="inp"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendChatMessage()}
+                  placeholder="Ask a question..."
+                  style={{flex:1}}
+                />
+                <button
+                  className="btn btn-primary"
+                  onClick={sendChatMessage}
+                  disabled={!chatInput.trim() || chatLoading}
+                >
+                  Send
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </main>
