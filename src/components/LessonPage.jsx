@@ -24,6 +24,8 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
   const [summary, setSummary] = useState(lesson.ai_summary || '');
   const [keyConcepts, setKeyConcepts] = useState(lesson.key_concepts || []);
   const [generatingSummary, setGeneratingSummary] = useState(false);
+  const [showRegenerateOptions, setShowRegenerateOptions] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState('');
   const fileInputRef = useRef(null);
   const generateTimeoutRef = useRef(null);
 
@@ -118,9 +120,9 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
     }
   }
 
-  async function generateAiNotes() {
-    if (dump.trim().length < 50) {
-      setAiSuggestion("Keep writing... I'll help organize your thoughts once you've added more content.");
+  async function generateAiNotes(regenerate = false, regeneratePrompt = '') {
+    if (!regenerate && dump.trim().length < 50 && attachments.length === 0) {
+      setAiSuggestion("Keep writing or attach files... I'll help organize your thoughts once you've added more content.");
       return;
     }
 
@@ -128,36 +130,51 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
     setAiSuggestion('');
 
     try {
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-notes`;
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-lesson-notes`;
       const headers = {
         'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         'Content-Type': 'application/json',
       };
 
+      const pdfAttachments = attachments
+        .filter(att => att.file_type === 'application/pdf')
+        .map(att => att.file_url);
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          brainDump: dump,
+          brainDump: dump || 'Please create notes from the attached materials.',
+          attachmentUrls: pdfAttachments,
           moduleName: mod.name,
           syllabus: mod.syllabus,
-          customInstructions: mod.custom_instructions
+          learningStyle: learningStyle,
+          regenerate: regenerate,
+          customPrompt: regeneratePrompt
         })
       });
 
       const data = await response.json();
 
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
       if (data.notes) {
         setAiSuggestion(data.notes);
-
-        if (dump.trim().length >= 100) {
-          generateSummaryFromNotes(data.notes);
+        if (data.summary) {
+          setSummary(data.summary);
         }
+        if (data.keyConcepts && data.keyConcepts.length > 0) {
+          setKeyConcepts(data.keyConcepts);
+        }
+        setShowRegenerateOptions(false);
+        setCustomPrompt('');
       } else {
         throw new Error('No notes generated');
       }
     } catch (error) {
-      notify('Failed to generate AI notes', 'err');
+      notify(error.message || 'Failed to generate AI notes', 'err');
     } finally {
       setGeneratingNotes(false);
     }
@@ -267,10 +284,18 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
     }
 
     generateTimeoutRef.current = setTimeout(() => {
-      if (value.trim().length >= 100) {
-        generateAiNotes();
+      if (value.trim().length >= 100 || attachments.length > 0) {
+        generateAiNotes(false, '');
       }
     }, 2000);
+  }
+
+  async function handleRegenerateWithPrompt() {
+    if (!customPrompt.trim()) {
+      notify('Please enter what you\'d like to change', 'err');
+      return;
+    }
+    await generateAiNotes(true, customPrompt);
   }
 
   return (
@@ -305,9 +330,23 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
         {tab === 'dump' && (
           <div className="fu">
             <h2 style={{fontSize:21,marginBottom:6,color:"var(--ink)"}}>Brain Dump</h2>
-            <p style={{fontSize:14,color:"var(--ink3)",lineHeight:1.65,marginBottom:20}}>
-              Write everything from today's class. AI will help organize your thoughts as you type.
+            <p style={{fontSize:14,color:"var(--ink3)",lineHeight:1.65,marginBottom:12}}>
+              Write everything from today's class or attach PDF notes. AI will help organize your thoughts.
             </p>
+            {attachments.filter(att => att.file_type === 'application/pdf').length > 0 && (
+              <div style={{
+                padding: '12px 16px',
+                background: '#EFF6FF',
+                border: '1px solid #BFDBFE',
+                borderRadius: 8,
+                marginBottom: 16,
+                fontSize: 13,
+                color: '#1E40AF'
+              }}>
+                💡 Tip: Click "Generate Notes" to have AI read your PDF and create organized notes based on your learning preferences
+              </div>
+            )}
+
 
             <div style={{display: 'grid', gridTemplateColumns: aiSuggestion ? '1fr 1fr' : '1fr', gap: 16}}>
               <div style={{
@@ -429,15 +468,15 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
                   <div style={{display: 'flex', gap: 8}}>
                     <button
                       className="btn btn-ghost"
-                      onClick={generateAiNotes}
-                      disabled={!dump.trim() || generatingNotes || dump.trim().length < 50}
+                      onClick={() => generateAiNotes(false, '')}
+                      disabled={(!dump.trim() && attachments.length === 0) || generatingNotes}
                     >
-                      {generatingNotes ? '✨ Organizing...' : '✨ Organize Notes'}
+                      {generatingNotes ? '✨ Organizing...' : '✨ Generate Notes'}
                     </button>
                     <button
                       className="btn btn-primary"
                       onClick={saveNotes}
-                      disabled={!dump.trim() || processing}
+                      disabled={(!dump.trim() && !aiSuggestion) || processing}
                     >
                       {processing ? (
                         <>
@@ -471,15 +510,87 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
                   }}>
                     <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
                       <span style={{fontSize: 16}}>✨</span>
-                      <span style={{fontSize: 14, fontWeight: 600, color: '#166534'}}>AI Organized Notes</span>
+                      <span style={{fontSize: 14, fontWeight: 600, color: '#166534'}}>AI Generated Notes</span>
                     </div>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setAiSuggestion('')}
-                    >
-                      ×
-                    </button>
+                    <div style={{display: 'flex', gap: 8}}>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setShowRegenerateOptions(!showRegenerateOptions)}
+                        title="Customize and regenerate"
+                      >
+                        🔄
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setAiSuggestion('')}
+                      >
+                        ×
+                      </button>
+                    </div>
                   </div>
+
+                  {showRegenerateOptions && (
+                    <div style={{
+                      marginBottom: 12,
+                      padding: 12,
+                      background: 'var(--paper)',
+                      borderRadius: 8,
+                      border: '1px solid var(--paper2)'
+                    }}>
+                      <p style={{fontSize: 13, color: 'var(--ink3)', marginBottom: 8}}>
+                        What would you like to change about these notes?
+                      </p>
+                      <div style={{display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10}}>
+                        {[
+                          'Make it more concise',
+                          'Add more details',
+                          'Add more examples',
+                          'Use bullet points',
+                          'More visual hierarchy',
+                          'Focus on key concepts'
+                        ].map(suggestion => (
+                          <button
+                            key={suggestion}
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => setCustomPrompt(suggestion)}
+                            style={{fontSize: 12, padding: '4px 10px'}}
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+                      <textarea
+                        className="inp"
+                        value={customPrompt}
+                        onChange={(e) => setCustomPrompt(e.target.value)}
+                        placeholder="Or type your own instructions..."
+                        style={{
+                          minHeight: 60,
+                          fontSize: 13,
+                          marginBottom: 8
+                        }}
+                      />
+                      <div style={{display: 'flex', gap: 8}}>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={handleRegenerateWithPrompt}
+                          disabled={!customPrompt.trim() || generatingNotes}
+                        >
+                          {generatingNotes ? 'Regenerating...' : 'Regenerate'}
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => {
+                            setShowRegenerateOptions(false);
+                            setCustomPrompt('');
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div style={{
                     fontSize: 14,
                     color: 'var(--ink2)',
