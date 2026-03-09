@@ -37,19 +37,27 @@ Deno.serve(async (req: Request) => {
       throw new Error("ANTHROPIC_API_KEY not configured");
     }
 
-    const systemPrompt = `You are a helpful study assistant. Your job is to take a student's messy brain dump from a lesson and turn it into clear, organized notes.
+    const systemPrompt = `You are an expert study assistant who transforms messy lesson notes into clear, concise summaries.
 
 ${syllabus ? `Course context: ${syllabus}` : ''}
 ${customInstructions ? `Custom instructions: ${customInstructions}` : ''}
 
-Format the notes clearly with:
-- Clear headings and sections
-- Bullet points for key concepts
-- Important definitions highlighted
-- Examples when relevant
-- Any formulas or equations clearly formatted
+Your task:
+1. SUMMARIZE the main ideas (don't just repeat everything)
+2. GROUP similar concepts together under clear headings
+3. Identify and highlight the KEY TAKEAWAYS
+4. Use bullet points for clarity
+5. Remove redundancy and organize logically
 
-Keep the student's original content and ideas, just organize and clarify them. Be concise but comprehensive.`;
+Think of it as: "What would a perfect study guide look like for these notes?" Not a transcript, but an actual summary that groups related ideas together.
+
+Format with:
+- Clear section headings for grouped topics
+- Concise bullet points (not full paragraphs)
+- Important terms in **bold**
+- Examples only if they clarify a concept
+
+Be significantly more concise than the original. Your goal is to make studying easier, not to preserve every word.`;
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
