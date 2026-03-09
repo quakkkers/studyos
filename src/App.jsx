@@ -23,14 +23,33 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [showRevisionChat, setShowRevisionChat] = useState(false);
 
+  const saveNavigationState = (screenName, moduleId = null, lessonId = null) => {
+    const state = { screen: screenName, moduleId, lessonId };
+    localStorage.setItem('studyos_nav_state', JSON.stringify(state));
+  };
+
+  const loadNavigationState = () => {
+    try {
+      const saved = localStorage.getItem('studyos_nav_state');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const clearNavigationState = () => {
+    localStorage.removeItem('studyos_nav_state');
+  };
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        loadProfile(session.user.id);
+        loadProfile(session.user.id, true);
       } else {
         setLoading(false);
         setScreen('auth');
+        clearNavigationState();
       }
     });
 
@@ -39,10 +58,11 @@ export default function App() {
         setUser(session?.user ?? null);
         if (session?.user) {
           if (event === 'SIGNED_IN') {
-            await loadProfile(session.user.id);
+            await loadProfile(session.user.id, false);
           }
         } else {
           setScreen('auth');
+          clearNavigationState();
         }
       })();
     });
@@ -50,7 +70,7 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  async function loadProfile(userId) {
+  async function loadProfile(userId, shouldRestoreNav = false) {
     try {
       const { data, error } = await supabase
         .from('user_profiles')
@@ -77,19 +97,82 @@ export default function App() {
 
         setProfile(newProfile);
         setScreen('onboarding');
+        clearNavigationState();
       } else {
         setProfile(data);
         if (!data.has_completed_onboarding) {
           setScreen('onboarding');
+          clearNavigationState();
         } else {
           await loadModules(userId);
-          setScreen('dash');
+
+          if (shouldRestoreNav) {
+            const navState = loadNavigationState();
+            if (navState && navState.screen !== 'auth' && navState.screen !== 'loading') {
+              await restoreNavigationState(navState, userId);
+            } else {
+              setScreen('dash');
+            }
+          } else {
+            setScreen('dash');
+          }
         }
       }
     } catch (error) {
       notify('Failed to load profile', 'err');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function restoreNavigationState(navState, userId) {
+    try {
+      if (navState.screen === 'mod' && navState.moduleId) {
+        const { data } = await supabase
+          .from('modules')
+          .select('*')
+          .eq('id', navState.moduleId)
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (data) {
+          setActiveMod(data);
+          setScreen('mod');
+        } else {
+          setScreen('dash');
+        }
+      } else if (navState.screen === 'lesson' && navState.moduleId && navState.lessonId) {
+        const { data: modData } = await supabase
+          .from('modules')
+          .select('*')
+          .eq('id', navState.moduleId)
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        const { data: lessonData } = await supabase
+          .from('lessons')
+          .select('*')
+          .eq('id', navState.lessonId)
+          .eq('module_id', navState.moduleId)
+          .maybeSingle();
+
+        if (modData && lessonData) {
+          setActiveMod(modData);
+          setActiveLesson(lessonData);
+          setScreen('lesson');
+        } else if (modData) {
+          setActiveMod(modData);
+          setScreen('mod');
+        } else {
+          setScreen('dash');
+        }
+      } else if (navState.screen === 'settings') {
+        setScreen('settings');
+      } else {
+        setScreen('dash');
+      }
+    } catch {
+      setScreen('dash');
     }
   }
 
@@ -114,6 +197,7 @@ export default function App() {
     setProfile(null);
     setModules([]);
     setScreen('auth');
+    clearNavigationState();
   }
 
   function notify(msg, type = 'ok') {
@@ -148,6 +232,7 @@ export default function App() {
               .eq('id', user.id);
             await loadModules(user.id);
             setScreen('dash');
+            saveNavigationState('dash');
             notify('Welcome to StudyOS!');
           }}
         />
@@ -162,7 +247,10 @@ export default function App() {
         <Toast toast={toast} />
         <SettingsPage
           profile={profile}
-          onBack={() => setScreen('dash')}
+          onBack={() => {
+            setScreen('dash');
+            saveNavigationState('dash');
+          }}
           onUpdate={async (updates) => {
             try {
               const { error } = await supabase
@@ -195,9 +283,13 @@ export default function App() {
             await loadModules(user.id);
             setActiveMod(mod);
             setScreen('mod');
+            saveNavigationState('mod', mod.id);
             notify(`${mod.name} is ready!`);
           }}
-          onCancel={() => setScreen('dash')}
+          onCancel={() => {
+            setScreen('dash');
+            saveNavigationState('dash');
+          }}
         />
       </>
     );
@@ -213,6 +305,7 @@ export default function App() {
           userId={user.id}
           onBack={() => {
             setScreen('dash');
+            saveNavigationState('dash');
             loadModules(user.id);
           }}
           onUpdate={async (updated) => {
@@ -222,6 +315,7 @@ export default function App() {
           onOpenLesson={(l) => {
             setActiveLesson(l);
             setScreen('lesson');
+            saveNavigationState('lesson', activeMod.id, l.id);
           }}
           notify={notify}
         />
@@ -239,7 +333,10 @@ export default function App() {
           mod={activeMod}
           userId={user.id}
           profile={profile}
-          onBack={() => setScreen('mod')}
+          onBack={() => {
+            setScreen('mod');
+            saveNavigationState('mod', activeMod.id);
+          }}
           onUpdate={async (ul) => {
             setActiveLesson(ul);
             await loadModules(user.id);
@@ -257,12 +354,19 @@ export default function App() {
       <Dashboard
         modules={modules}
         profile={profile}
-        onNew={() => setScreen('setup')}
+        onNew={() => {
+          setScreen('setup');
+          saveNavigationState('setup');
+        }}
         onOpen={(m) => {
           setActiveMod(m);
           setScreen('mod');
+          saveNavigationState('mod', m.id);
         }}
-        onSettings={() => setScreen('settings')}
+        onSettings={() => {
+          setScreen('settings');
+          saveNavigationState('settings');
+        }}
         onOpenRevisionChat={() => setShowRevisionChat(true)}
         onReorderModules={async (reordered) => {
           setModules(reordered);
@@ -282,6 +386,7 @@ export default function App() {
           onNavigateToLesson={(lesson) => {
             setActiveLesson(lesson);
             setScreen('lesson');
+            saveNavigationState('lesson', lesson.module_id, lesson.id);
             setShowRevisionChat(false);
           }}
           onClose={() => setShowRevisionChat(false)}
