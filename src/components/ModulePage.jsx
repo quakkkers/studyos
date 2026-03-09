@@ -21,6 +21,11 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
   const [showLessonDayConfig, setShowLessonDayConfig] = useState(false);
   const [tempLessonDay, setTempLessonDay] = useState(mod.lesson_day || '');
   const [generatingLessons, setGeneratingLessons] = useState(false);
+  const [showCustomGenerate, setShowCustomGenerate] = useState(false);
+  const [customTermName, setCustomTermName] = useState('');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [customLessonDay, setCustomLessonDay] = useState(mod.lesson_day || '');
 
   const c = col(mod.color);
 
@@ -131,24 +136,55 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
     }
   }
 
-  async function generateRecurringLessons() {
-    if (!mod.lesson_day) {
-      notify('Please set a lesson day first', 'err');
+  async function generateCustomLessons() {
+    if (!customLessonDay) {
+      notify('Please select a lesson day', 'err');
       return;
     }
 
-    if (terms.length === 0) {
-      notify('Please add terms first (via Edit Module)', 'err');
+    if (!customStartDate || !customEndDate) {
+      notify('Please select start and end dates', 'err');
+      return;
+    }
+
+    if (new Date(customEndDate) < new Date(customStartDate)) {
+      notify('End date must be after start date', 'err');
       return;
     }
 
     setGeneratingLessons(true);
 
     try {
-      const lessonsToCreate = generateLessonsFromTerms(terms, mod.lesson_day);
+      let termId = null;
+
+      if (customTermName.trim()) {
+        const { data: newTerm, error: termError } = await supabase
+          .from('terms')
+          .insert([{
+            module_id: mod.id,
+            name: customTermName.trim(),
+            start_date: customStartDate,
+            end_date: customEndDate,
+            position: terms.length
+          }])
+          .select()
+          .single();
+
+        if (termError) throw termError;
+        termId = newTerm.id;
+      }
+
+      const fakeTerm = {
+        id: termId,
+        start_date: customStartDate,
+        end_date: customEndDate
+      };
+
+      const lessonsToCreate = generateLessonsFromTerms([fakeTerm], customLessonDay);
 
       if (lessonsToCreate.length === 0) {
-        notify('No lessons to generate', 'err');
+        notify('No lessons to generate in this date range', 'err');
+        setGeneratingLessons(false);
         return;
       }
 
@@ -156,7 +192,8 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
       const newLessons = lessonsToCreate.filter(l => !existingDates.has(l.date));
 
       if (newLessons.length === 0) {
-        notify('All lessons already exist');
+        notify('All lessons already exist for these dates');
+        setGeneratingLessons(false);
         return;
       }
 
@@ -166,7 +203,7 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
 
       const lessonInserts = newLessons.map((l, index) => ({
         module_id: mod.id,
-        term_id: l.term_id,
+        term_id: termId,
         lesson_number: maxLessonNumber + index + 1,
         date: l.date
       }));
@@ -178,6 +215,11 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
       if (error) throw error;
 
       notify(`Generated ${newLessons.length} new lessons`);
+      setShowCustomGenerate(false);
+      setCustomTermName('');
+      setCustomStartDate('');
+      setCustomEndDate('');
+      setCustomLessonDay(mod.lesson_day || '');
       await loadTermsAndLessons();
     } catch (error) {
       notify('Failed to generate lessons', 'err');
@@ -392,15 +434,12 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
                 >
                   Set Lesson Day
                 </button>
-                {mod.lesson_day && terms.length > 0 && (
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={generateRecurringLessons}
-                    disabled={generatingLessons}
-                  >
-                    {generatingLessons ? 'Generating...' : '🔄 Generate Lessons'}
-                  </button>
-                )}
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setShowCustomGenerate(true)}
+                >
+                  🔄 Generate Lessons
+                </button>
                 <button
                   className="btn btn-primary btn-sm"
                   onClick={() => setCreatingLesson(true)}
@@ -454,6 +493,104 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
                     Note: You need to add terms first (via Edit Module) to auto-generate lessons.
                   </p>
                 )}
+              </div>
+            )}
+
+            {showCustomGenerate && (
+              <div className="card" style={{padding:'24px', marginBottom:14, background:'var(--white)', border:'2px solid var(--paper2)'}}>
+                <h3 style={{fontSize:17, marginBottom:8, color:'var(--ink)'}}>Generate Recurring Lessons</h3>
+                <p style={{fontSize:13, color:'var(--ink3)', marginBottom:20}}>
+                  Create lessons for a specific date range based on a recurring day of the week.
+                </p>
+
+                <div style={{display:'grid', gap:16}}>
+                  <div>
+                    <label style={{display:'block', fontSize:12, fontWeight:600, color:'var(--ink2)', marginBottom:6}}>
+                      Term Name (optional)
+                    </label>
+                    <input
+                      type="text"
+                      className="inp"
+                      value={customTermName}
+                      onChange={(e) => setCustomTermName(e.target.value)}
+                      placeholder="e.g., Term 2, Spring Semester..."
+                      style={{width:'100%'}}
+                    />
+                    <p style={{fontSize:11, color:'var(--ink3)', marginTop:4}}>
+                      If provided, a new term will be created and lessons will be linked to it.
+                    </p>
+                  </div>
+
+                  <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                    <div>
+                      <label style={{display:'block', fontSize:12, fontWeight:600, color:'var(--ink2)', marginBottom:6}}>
+                        Start Date *
+                      </label>
+                      <input
+                        type="date"
+                        className="inp"
+                        value={customStartDate}
+                        onChange={(e) => setCustomStartDate(e.target.value)}
+                        style={{width:'100%'}}
+                      />
+                    </div>
+                    <div>
+                      <label style={{display:'block', fontSize:12, fontWeight:600, color:'var(--ink2)', marginBottom:6}}>
+                        End Date *
+                      </label>
+                      <input
+                        type="date"
+                        className="inp"
+                        value={customEndDate}
+                        onChange={(e) => setCustomEndDate(e.target.value)}
+                        style={{width:'100%'}}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{display:'block', fontSize:12, fontWeight:600, color:'var(--ink2)', marginBottom:6}}>
+                      Lesson Day *
+                    </label>
+                    <select
+                      className="inp"
+                      value={customLessonDay}
+                      onChange={(e) => setCustomLessonDay(e.target.value)}
+                      style={{width:'100%'}}
+                    >
+                      <option value="">Select day...</option>
+                      <option value="monday">Monday</option>
+                      <option value="tuesday">Tuesday</option>
+                      <option value="wednesday">Wednesday</option>
+                      <option value="thursday">Thursday</option>
+                      <option value="friday">Friday</option>
+                      <option value="saturday">Saturday</option>
+                      <option value="sunday">Sunday</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{display:'flex', gap:10, marginTop:20, justifyContent:'flex-end'}}>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setShowCustomGenerate(false);
+                      setCustomTermName('');
+                      setCustomStartDate('');
+                      setCustomEndDate('');
+                      setCustomLessonDay(mod.lesson_day || '');
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={generateCustomLessons}
+                    disabled={!customLessonDay || !customStartDate || !customEndDate || generatingLessons}
+                  >
+                    {generatingLessons ? 'Generating...' : 'Generate Lessons'}
+                  </button>
+                </div>
               </div>
             )}
 
