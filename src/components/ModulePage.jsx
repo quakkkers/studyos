@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { MODULE_COLORS, SUBJECT_TYPES, CALENDAR_VIEWS } from '../constants';
+import ModuleEditor from './ModuleEditor';
 
 function col(colorId) {
   return MODULE_COLORS.find(c => c.id === colorId) || MODULE_COLORS[0];
@@ -13,6 +14,7 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(mod.name);
   const [calendarView, setCalendarView] = useState('month');
+  const [showEditModule, setShowEditModule] = useState(false);
 
   const c = col(mod.color);
 
@@ -96,6 +98,21 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
 
   return (
     <div style={{minHeight:"100vh",background:"var(--paper)",display:"flex",flexDirection:"column"}}>
+      {showEditModule && (
+        <ModuleEditor
+          module={mod}
+          onClose={() => {
+            setShowEditModule(false);
+            loadTermsAndLessons();
+          }}
+          onUpdate={(updated) => {
+            onUpdate(updated);
+            loadTermsAndLessons();
+          }}
+          notify={notify}
+        />
+      )}
+
       <header style={{background:"var(--white)",borderBottom:"1px solid var(--paper2)"}}>
         <div style={{padding:"14px 36px",display:"flex",alignItems:"center",gap:14}}>
           <button className="btn btn-ghost btn-sm" onClick={onBack}>← Dashboard</button>
@@ -113,6 +130,7 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
             </>
           ) : (
             <>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowEditModule(true)}>⚙️ Edit Module</button>
               <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>✏️ Edit Name</button>
               <button className="btn btn-danger btn-sm" onClick={deleteModule}>🗑️ Delete</button>
             </>

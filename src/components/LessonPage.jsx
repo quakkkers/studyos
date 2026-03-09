@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
 import { MODULE_COLORS } from '../constants';
 
@@ -11,9 +11,98 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
   const [dump, setDump] = useState(lesson.raw_notes || '');
   const [notes, setNotes] = useState(lesson.structured_notes || '');
   const [processing, setProcessing] = useState(false);
+  const [attachments, setAttachments] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   const c = col(mod.color);
   const date = new Date(lesson.date);
+
+  useEffect(() => {
+    loadAttachments();
+  }, [lesson.id]);
+
+  async function loadAttachments() {
+    try {
+      const { data, error } = await supabase
+        .from('lesson_attachments')
+        .select('*')
+        .eq('lesson_id', lesson.id)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setAttachments(data || []);
+    } catch (error) {
+      notify('Failed to load attachments', 'err');
+    }
+  }
+
+  async function handleFileUpload(e) {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    setUploading(true);
+
+    try {
+      for (const file of files) {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const filePath = `lesson-attachments/${lesson.id}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('lesson-files')
+          .upload(filePath, file);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('lesson-files')
+          .getPublicUrl(filePath);
+
+        const { error: dbError } = await supabase
+          .from('lesson_attachments')
+          .insert([{
+            lesson_id: lesson.id,
+            file_name: file.name,
+            file_url: publicUrl,
+            file_type: file.type,
+            file_size: file.size
+          }]);
+
+        if (dbError) throw dbError;
+      }
+
+      await loadAttachments();
+      notify('Files uploaded successfully');
+    } catch (error) {
+      notify('Failed to upload files', 'err');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  async function deleteAttachment(attachmentId, fileUrl) {
+    if (!window.confirm('Delete this file?')) return;
+
+    try {
+      const filePath = fileUrl.split('/lesson-files/')[1];
+
+      await supabase.storage
+        .from('lesson-files')
+        .remove([filePath]);
+
+      await supabase
+        .from('lesson_attachments')
+        .delete()
+        .eq('id', attachmentId);
+
+      await loadAttachments();
+      notify('File deleted');
+    } catch (error) {
+      notify('Failed to delete file', 'err');
+    }
+  }
 
   async function saveNotes() {
     setProcessing(true);
@@ -72,35 +161,139 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
           <div className="fu">
             <h2 style={{fontSize:21,marginBottom:6,color:"var(--ink)"}}>Brain Dump</h2>
             <p style={{fontSize:14,color:"var(--ink3)",lineHeight:1.65,marginBottom:20}}>
-              Write everything from today's class — raw, messy, incomplete. StudyOS will structure it all.
+              Write everything from today's class. Add files or images to capture the complete lesson.
             </p>
 
-            <textarea
-              className="inp"
-              value={dump}
-              onChange={(e) => setDump(e.target.value)}
-              placeholder="Just write everything from today's lesson. Don't worry about structure or spelling."
-              style={{minHeight:260,lineHeight:1.8,fontSize:15,resize:"vertical"}}
-            />
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              background: 'var(--white)',
+              border: '1px solid var(--paper2)',
+              borderRadius: 12,
+              padding: '16px',
+              minHeight: 300
+            }}>
+              {attachments.length > 0 && (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                  paddingBottom: 12,
+                  borderBottom: '1px solid var(--paper2)'
+                }}>
+                  {attachments.map(att => (
+                    <div
+                      key={att.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '10px 12px',
+                        background: 'var(--paper)',
+                        borderRadius: 8,
+                        fontSize: 14
+                      }}
+                    >
+                      <span style={{fontSize: 20}}>
+                        {att.file_type.startsWith('image/') ? '🖼️' : '📎'}
+                      </span>
+                      <div style={{flex: 1, minWidth: 0}}>
+                        <div style={{
+                          color: 'var(--ink)',
+                          fontWeight: 500,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {att.file_name}
+                        </div>
+                        <div style={{fontSize: 12, color: 'var(--ink3)'}}>
+                          {(att.file_size / 1024).toFixed(1)} KB
+                        </div>
+                      </div>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => window.open(att.file_url, '_blank')}
+                      >
+                        View
+                      </button>
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => deleteAttachment(att.id, att.file_url)}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-            <div style={{marginTop:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{fontSize:12,color:"var(--ink4)"}}>
-                {dump.trim().split(/\s+/).filter(Boolean).length} words
-              </span>
-              <button
-                className="btn btn-primary btn-lg"
-                onClick={saveNotes}
-                disabled={!dump.trim() || processing}
-              >
-                {processing ? (
-                  <>
-                    <span className="dot" />
-                    <span className="dot" />
-                    <span className="dot" />
-                    Saving
-                  </>
-                ) : '✨ Save Notes →'}
-              </button>
+              <textarea
+                className="inp"
+                value={dump}
+                onChange={(e) => setDump(e.target.value)}
+                placeholder="Start typing your notes here... Don't worry about structure or spelling."
+                style={{
+                  minHeight: 200,
+                  lineHeight: 1.8,
+                  fontSize: 15,
+                  resize: 'vertical',
+                  border: 'none',
+                  background: 'transparent',
+                  flex: 1
+                }}
+              />
+
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingTop: 8,
+                borderTop: '1px solid var(--paper2)'
+              }}>
+                <div style={{display: 'flex', gap: 10, alignItems: 'center'}}>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    onChange={handleFileUpload}
+                    style={{display: 'none'}}
+                  />
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      padding: 0,
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    {uploading ? '...' : '+'}
+                  </button>
+                  <span style={{fontSize: 12, color: 'var(--ink4)'}}>
+                    {dump.trim().split(/\s+/).filter(Boolean).length} words
+                  </span>
+                </div>
+                <button
+                  className="btn btn-primary"
+                  onClick={saveNotes}
+                  disabled={!dump.trim() || processing}
+                >
+                  {processing ? (
+                    <>
+                      <span className="dot" />
+                      <span className="dot" />
+                      <span className="dot" />
+                    </>
+                  ) : 'Save Notes'}
+                </button>
+              </div>
             </div>
           </div>
         )}
