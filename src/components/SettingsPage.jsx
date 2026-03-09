@@ -198,24 +198,55 @@ export default function SettingsPage({ profile, onBack, onUpdate, onSignOut, not
             <div className="fu">
               <h2 style={{fontSize:20,marginBottom:8,color:"var(--ink)"}}>Learning Style</h2>
               <p style={{fontSize:14,color:"var(--ink3)",marginBottom:24,lineHeight:1.6}}>
-                Update how StudyOS adapts to your learning preferences
+                Customize how StudyOS presents information to match your learning preferences
               </p>
 
-              <div className="card" style={{padding:"24px 26px"}}>
+              <div className="card" style={{padding:"24px 26px",marginBottom:20}}>
                 <div style={{marginBottom:24}}>
                   <label style={{fontSize:14,fontWeight:600,color:"var(--ink)",display:"block",marginBottom:12}}>
                     When learning something new, you prefer...
                   </label>
                   <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
                     {[
-                      {v: 'big-picture', l: '🗺 Big picture first'},
-                      {v: 'detail-first', l: '🔍 Details first'},
+                      {v: 'summary-first', l: '📝 Summary first, then details'},
+                      {v: 'details-first', l: '🔍 Details first, then summary'},
+                      {v: 'balanced', l: '⚖️ Balanced approach'}
+                    ].map(opt => (
+                      <button
+                        key={opt.v}
+                        onClick={() => setLearningStyle({...learningStyle, noteStyle: opt.v})}
+                        className="btn"
+                        style={{
+                          background: learningStyle.noteStyle === opt.v ? 'var(--primary)' : 'var(--white)',
+                          color: learningStyle.noteStyle === opt.v ? '#fff' : 'var(--ink2)',
+                          border: `2px solid ${learningStyle.noteStyle === opt.v ? 'var(--primary)' : 'var(--paper3)'}`,
+                          flex: '1 1 auto',
+                          minWidth: 200
+                        }}
+                      >
+                        {opt.l}
+                      </button>
+                    ))}
+                  </div>
+                  <p style={{fontSize:12,color:"var(--ink4)",marginTop:10,lineHeight:1.5}}>
+                    This controls how notes and lesson content are organized and displayed
+                  </p>
+                </div>
+
+                <div style={{marginBottom:24}}>
+                  <label style={{fontSize:14,fontWeight:600,color:"var(--ink)",display:"block",marginBottom:12}}>
+                    Information processing style
+                  </label>
+                  <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                    {[
+                      {v: 'big-picture', l: '🗺️ Big picture first'},
+                      {v: 'detail-first', l: '🔬 Details first'},
                       {v: 'unknown', l: '🤷 Not sure'}
                     ].map(opt => (
                       <button
                         key={opt.v}
                         onClick={() => setLearningStyle({...learningStyle, processingStyle: opt.v})}
-                        className="btn"
+                        className="btn btn-sm"
                         style={{
                           background: learningStyle.processingStyle === opt.v ? 'var(--primary)' : 'var(--white)',
                           color: learningStyle.processingStyle === opt.v ? '#fff' : 'var(--ink2)',
@@ -237,7 +268,7 @@ export default function SettingsPage({ profile, onBack, onUpdate, onSignOut, not
                       {v: 'reading', l: '📖 Reading'},
                       {v: 'writing', l: '✍️ Writing'},
                       {v: 'examples', l: '💡 Examples'},
-                      {v: 'talking', l: '🗣 Talking'}
+                      {v: 'talking', l: '🗣️ Talking'}
                     ].map(opt => (
                       <button
                         key={opt.v}
@@ -258,6 +289,13 @@ export default function SettingsPage({ profile, onBack, onUpdate, onSignOut, not
                 <button className="btn btn-primary" onClick={saveLearningStyle}>
                   Save Learning Style
                 </button>
+              </div>
+
+              <div className="card" style={{padding:"20px 24px",background:"var(--sky-bg)",border:"1px solid var(--sky)"}}>
+                <p style={{fontSize:13,color:"var(--ink2)",lineHeight:1.6}}>
+                  <strong>How it works:</strong> StudyOS uses your preferences to organize lesson notes and summaries.
+                  Choose "Summary first\" to see key points at the top, or "Details first\" to dive into comprehensive notes immediately.
+                </p>
               </div>
             </div>
           )}

@@ -236,6 +236,7 @@ export default function App() {
           lesson={activeLesson}
           mod={activeMod}
           userId={user.id}
+          profile={profile}
           onBack={() => setScreen('mod')}
           onUpdate={async (ul) => {
             setActiveLesson(ul);

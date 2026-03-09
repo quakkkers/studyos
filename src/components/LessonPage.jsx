@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
 import { MODULE_COLORS } from '../constants';
+import { generateLessonSummary } from '../utils/summaryGenerator';
 
 function col(colorId) {
   return MODULE_COLORS.find(c => c.id === colorId) || MODULE_COLORS[0];
 }
 
-export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, notify }) {
+export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, notify, profile }) {
   const [tab, setTab] = useState(lesson.structured_notes ? 'notes' : 'dump');
   const [dump, setDump] = useState(lesson.raw_notes || '');
   const [notes, setNotes] = useState(lesson.structured_notes || '');
@@ -19,11 +20,17 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [topic, setTopic] = useState(lesson.topic || '');
+  const [summary, setSummary] = useState(lesson.ai_summary || '');
+  const [keyConcepts, setKeyConcepts] = useState(lesson.key_concepts || []);
+  const [generatingSummary, setGeneratingSummary] = useState(false);
   const fileInputRef = useRef(null);
   const generateTimeoutRef = useRef(null);
 
   const c = col(mod.color);
   const date = new Date(lesson.date);
+  const learningStyle = profile?.learning_style || {};
+  const noteStyle = learningStyle.noteStyle || 'balanced';
 
   useEffect(() => {
     loadAttachments();
@@ -142,6 +149,10 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
 
       if (data.notes) {
         setAiSuggestion(data.notes);
+
+        if (dump.trim().length >= 100) {
+          generateSummaryFromNotes(data.notes);
+        }
       } else {
         throw new Error('No notes generated');
       }
@@ -149,6 +160,29 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
       notify('Failed to generate AI notes', 'err');
     } finally {
       setGeneratingNotes(false);
+    }
+  }
+
+  async function generateSummaryFromNotes(notesText) {
+    setGeneratingSummary(true);
+    try {
+      const result = await generateLessonSummary(
+        notesText || notes,
+        topic || mod.name,
+        import.meta.env.VITE_SUPABASE_URL,
+        import.meta.env.VITE_SUPABASE_ANON_KEY
+      );
+
+      if (result.summary) {
+        setSummary(result.summary);
+      }
+      if (result.keyConcepts.length > 0) {
+        setKeyConcepts(result.keyConcepts);
+      }
+    } catch (error) {
+      console.error('Failed to generate summary:', error);
+    } finally {
+      setGeneratingSummary(false);
     }
   }
 
@@ -162,13 +196,16 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
         .update({
           raw_notes: dump,
           structured_notes: notesToSave,
+          topic: topic || null,
+          ai_summary: summary || null,
+          key_concepts: keyConcepts.length > 0 ? keyConcepts : null,
           updated_at: new Date().toISOString()
         })
         .eq('id', lesson.id);
 
       if (error) throw error;
 
-      onUpdate({ ...lesson, raw_notes: dump, structured_notes: notesToSave });
+      onUpdate({ ...lesson, raw_notes: dump, structured_notes: notesToSave, topic, ai_summary: summary, key_concepts: keyConcepts });
       setNotes(notesToSave);
       setAiSuggestion('');
       setTab('notes');
@@ -471,20 +508,152 @@ export default function LessonPage({ lesson, mod, userId, onBack, onUpdate, noti
             )}
 
             {notes && (
-              <div className="card fu" style={{padding:"32px 36px"}}>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:22,paddingBottom:16,borderBottom:"1px solid var(--paper2)"}}>
-                  <span style={{fontSize:22}}>{mod.emoji}</span>
-                  <div style={{flex:1}}>
-                    <div style={{fontFamily:"Lora,serif",fontSize:16,color:"var(--ink)"}}>
-                      {date.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'})}
-                    </div>
-                    <div style={{fontSize:12,color:c.text,fontWeight:500}}>{mod.name}</div>
-                  </div>
+              <div className="fu">
+                <div style={{marginBottom:16,display:"flex",alignItems:"center",gap:12}}>
+                  <input
+                    type="text"
+                    className="inp"
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    onBlur={async () => {
+                      if (topic !== lesson.topic) {
+                        try {
+                          await supabase.from('lessons').update({ topic }).eq('id', lesson.id);
+                          notify('Topic updated');
+                        } catch (error) {
+                          notify('Failed to update topic', 'err');
+                        }
+                      }
+                    }}
+                    placeholder="Lesson topic or title..."
+                    style={{flex:1,fontSize:16,fontWeight:600}}
+                  />
                   <button className="btn btn-ghost btn-sm" onClick={() => setTab('dump')}>✏️ Edit</button>
                 </div>
-                <div style={{fontSize:14,color:"var(--ink2)",lineHeight:1.85,whiteSpace:"pre-wrap"}}>
-                  {notes}
-                </div>
+
+                {noteStyle === 'summary-first' && (
+                  <>
+                    {(summary || keyConcepts.length > 0) && (
+                      <div className="card" style={{padding:"24px 28px",marginBottom:20,background:"var(--sky-bg)",border:"1px solid var(--sky)"}}>
+                        <h3 style={{fontSize:14,fontWeight:700,color:"var(--ink2)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:14}}>
+                          📝 Summary
+                        </h3>
+                        {summary && (
+                          <p style={{fontSize:14,color:"var(--ink)",lineHeight:1.7,marginBottom:16}}>
+                            {summary}
+                          </p>
+                        )}
+                        {keyConcepts.length > 0 && (
+                          <>
+                            <h4 style={{fontSize:13,fontWeight:600,color:"var(--ink2)",marginBottom:10}}>Key Concepts:</h4>
+                            <ul style={{margin:0,paddingLeft:20,fontSize:14,color:"var(--ink2)",lineHeight:1.8}}>
+                              {keyConcepts.map((concept, i) => (
+                                <li key={i}>{concept}</li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                        {!summary && !generatingSummary && notes && (
+                          <button
+                            className="btn btn-sm btn-primary"
+                            onClick={() => generateSummaryFromNotes(notes)}
+                            style={{marginTop:10}}
+                          >
+                            Generate Summary
+                          </button>
+                        )}
+                        {generatingSummary && (
+                          <p style={{fontSize:12,color:"var(--ink4)",fontStyle:"italic"}}>Generating summary...</p>
+                        )}
+                      </div>
+                    )}
+                    <div className="card" style={{padding:"32px 36px"}}>
+                      <h3 style={{fontSize:14,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:16}}>
+                        Detailed Notes
+                      </h3>
+                      <div style={{fontSize:14,color:"var(--ink2)",lineHeight:1.85,whiteSpace:"pre-wrap"}}>
+                        {notes}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {noteStyle === 'details-first' && (
+                  <>
+                    <div className="card" style={{padding:"32px 36px",marginBottom:20}}>
+                      <div style={{fontSize:14,color:"var(--ink2)",lineHeight:1.85,whiteSpace:"pre-wrap"}}>
+                        {notes}
+                      </div>
+                    </div>
+                    {(summary || keyConcepts.length > 0) && (
+                      <div className="card" style={{padding:"24px 28px",background:"var(--sky-bg)",border:"1px solid var(--sky)"}}>
+                        <h3 style={{fontSize:14,fontWeight:700,color:"var(--ink2)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:14}}>
+                          📝 Summary
+                        </h3>
+                        {summary && (
+                          <p style={{fontSize:14,color:"var(--ink)",lineHeight:1.7,marginBottom:16}}>
+                            {summary}
+                          </p>
+                        )}
+                        {keyConcepts.length > 0 && (
+                          <>
+                            <h4 style={{fontSize:13,fontWeight:600,color:"var(--ink2)",marginBottom:10}}>Key Concepts:</h4>
+                            <ul style={{margin:0,paddingLeft:20,fontSize:14,color:"var(--ink2)",lineHeight:1.8}}>
+                              {keyConcepts.map((concept, i) => (
+                                <li key={i}>{concept}</li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                        {!summary && !generatingSummary && notes && (
+                          <button
+                            className="btn btn-sm btn-primary"
+                            onClick={() => generateSummaryFromNotes(notes)}
+                            style={{marginTop:10}}
+                          >
+                            Generate Summary
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {(noteStyle === 'balanced' || !noteStyle) && (
+                  <div className="card" style={{padding:"32px 36px"}}>
+                    {(summary || keyConcepts.length > 0) && (
+                      <div style={{padding:"20px 24px",marginBottom:24,background:"var(--sky-bg)",border:"1px solid var(--sky)",borderRadius:8}}>
+                        <h3 style={{fontSize:14,fontWeight:700,color:"var(--ink2)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>
+                          Summary
+                        </h3>
+                        {summary && (
+                          <p style={{fontSize:13,color:"var(--ink)",lineHeight:1.7,marginBottom:12}}>
+                            {summary}
+                          </p>
+                        )}
+                        {keyConcepts.length > 0 && (
+                          <ul style={{margin:0,paddingLeft:20,fontSize:13,color:"var(--ink2)",lineHeight:1.7}}>
+                            {keyConcepts.map((concept, i) => (
+                              <li key={i}>{concept}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                    <div style={{fontSize:14,color:"var(--ink2)",lineHeight:1.85,whiteSpace:"pre-wrap"}}>
+                      {notes}
+                    </div>
+                    {!summary && !generatingSummary && notes && (
+                      <button
+                        className="btn btn-sm btn-ghost"
+                        onClick={() => generateSummaryFromNotes(notes)}
+                        style={{marginTop:16}}
+                      >
+                        Generate Summary
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
