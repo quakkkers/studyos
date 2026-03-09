@@ -468,18 +468,6 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
                         type="date"
                         className="inp"
                         value={generateStartDate}
-                        onChange={(e) => setCustomStartDate(e.target.value)}
-                        style={{width:'100%'}}
-                      />
-                    </div>
-                    <div>
-                      <label style={{display:'block', fontSize:12, fontWeight:600, color:'var(--ink2)', marginBottom:6}}>
-                        End Date *
-                      </label>
-                      <input
-                        type="date"
-                        className="inp"
-                        value={customEndDate}
                         onChange={(e) => setGenerateStartDate(e.target.value)}
                         style={{width:'100%'}}
                       />
