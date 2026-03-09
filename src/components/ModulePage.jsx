@@ -17,6 +17,8 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
   const [showEditModule, setShowEditModule] = useState(false);
   const [creatingLesson, setCreatingLesson] = useState(false);
   const [newLessonDate, setNewLessonDate] = useState('');
+  const [showLessonDayConfig, setShowLessonDayConfig] = useState(false);
+  const [tempLessonDay, setTempLessonDay] = useState(mod.lesson_day || '');
 
   const c = col(mod.color);
 
@@ -124,6 +126,22 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
       onOpenLesson(data);
     } catch (error) {
       notify('Failed to create lesson', 'err');
+    }
+  }
+
+  async function saveLessonDay() {
+    try {
+      const { error } = await supabase
+        .from('modules')
+        .update({ lesson_day: tempLessonDay, updated_at: new Date().toISOString() })
+        .eq('id', mod.id);
+
+      if (error) throw error;
+      onUpdate({ ...mod, lesson_day: tempLessonDay });
+      setShowLessonDayConfig(false);
+      notify('Lesson day updated');
+    } catch (error) {
+      notify('Failed to update lesson day', 'err');
     }
   }
 
@@ -277,17 +295,70 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
               <p style={{fontSize:11,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:"0.1em",margin:0}}>
                 All Lessons
               </p>
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => setCreatingLesson(true)}
-              >
-                + Add Lesson
-              </button>
+              <div style={{display:'flex', gap:8}}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setShowLessonDayConfig(true)}
+                >
+                  Set Lesson Day
+                </button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setCreatingLesson(true)}
+                >
+                  + Add Lesson
+                </button>
+              </div>
             </div>
+
+            {showLessonDayConfig && (
+              <div className="card" style={{padding:'20px', marginBottom:14, background:'var(--paper)'}}>
+                <h3 style={{fontSize:16, marginBottom:12, color:'var(--ink)'}}>Set Recurring Lesson Day</h3>
+                <p style={{fontSize:13, color:'var(--ink3)', marginBottom:14}}>
+                  Choose which day of the week lessons occur. This will be used to auto-generate lessons based on term dates.
+                </p>
+                <div style={{display:'flex', gap:10, alignItems:'center'}}>
+                  <select
+                    className="inp"
+                    value={tempLessonDay}
+                    onChange={(e) => setTempLessonDay(e.target.value)}
+                    style={{flex:1}}
+                  >
+                    <option value="">Select day...</option>
+                    <option value="monday">Monday</option>
+                    <option value="tuesday">Tuesday</option>
+                    <option value="wednesday">Wednesday</option>
+                    <option value="thursday">Thursday</option>
+                    <option value="friday">Friday</option>
+                    <option value="saturday">Saturday</option>
+                    <option value="sunday">Sunday</option>
+                  </select>
+                  <button
+                    className="btn btn-primary"
+                    onClick={saveLessonDay}
+                    disabled={!tempLessonDay}
+                  >
+                    Save
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setShowLessonDayConfig(false);
+                      setTempLessonDay(mod.lesson_day || '');
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
 
             {creatingLesson && (
               <div className="card" style={{padding:'20px', marginBottom:14, background:'var(--paper)'}}>
                 <h3 style={{fontSize:16, marginBottom:12, color:'var(--ink)'}}>Create New Lesson</h3>
+                <p style={{fontSize:13, color:'var(--ink3)', marginBottom:14}}>
+                  Add a single lesson manually by selecting a specific date.
+                </p>
                 <div style={{display:'flex', gap:10, alignItems:'center'}}>
                   <input
                     type="date"
@@ -316,17 +387,27 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
               </div>
             )}
 
-            {lessons.length === 0 && !creatingLesson && (
+            {lessons.length === 0 && !creatingLesson && !showLessonDayConfig && (
               <div className="card" style={{padding:"48px 32px",textAlign:"center"}}>
                 <div style={{fontSize:44,marginBottom:14}}>📚</div>
                 <h3 style={{fontSize:19,marginBottom:8}}>No lessons yet</h3>
-                <p style={{color:"var(--ink3)",fontSize:14,marginBottom:20}}>Add terms with dates to generate lessons, or create them manually.</p>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => setCreatingLesson(true)}
-                >
-                  + Create First Lesson
-                </button>
+                <p style={{color:"var(--ink3)",fontSize:14,marginBottom:20}}>
+                  Set a lesson day and add terms to auto-generate lessons, or create them manually one by one.
+                </p>
+                <div style={{display:'flex', gap:10, justifyContent:'center'}}>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => setShowLessonDayConfig(true)}
+                  >
+                    Set Lesson Day
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => setCreatingLesson(true)}
+                  >
+                    + Create Lesson
+                  </button>
+                </div>
               </div>
             )}
 
