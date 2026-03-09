@@ -26,6 +26,8 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [customLessonDay, setCustomLessonDay] = useState(mod.lesson_day || '');
+  const [selectedLessons, setSelectedLessons] = useState(new Set());
+  const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
 
   const c = col(mod.color);
 
@@ -101,6 +103,47 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
       notify('Lesson deleted');
     } catch (error) {
       notify('Failed to delete lesson', 'err');
+    }
+  }
+
+  function toggleLessonSelection(lessonId) {
+    const newSelected = new Set(selectedLessons);
+    if (newSelected.has(lessonId)) {
+      newSelected.delete(lessonId);
+    } else {
+      newSelected.add(lessonId);
+    }
+    setSelectedLessons(newSelected);
+  }
+
+  function selectAllLessons() {
+    const allIds = new Set(lessons.map(l => l.id));
+    setSelectedLessons(allIds);
+  }
+
+  function deselectAllLessons() {
+    setSelectedLessons(new Set());
+  }
+
+  async function bulkDeleteLessons() {
+    if (selectedLessons.size === 0) return;
+
+    if (!window.confirm(`Delete ${selectedLessons.size} selected lesson${selectedLessons.size > 1 ? 's' : ''}?`)) return;
+
+    try {
+      const { error } = await supabase
+        .from('lessons')
+        .delete()
+        .in('id', Array.from(selectedLessons));
+
+      if (error) throw error;
+
+      notify(`Deleted ${selectedLessons.size} lesson${selectedLessons.size > 1 ? 's' : ''}`);
+      setSelectedLessons(new Set());
+      setBulkDeleteMode(false);
+      await loadTermsAndLessons();
+    } catch (error) {
+      notify('Failed to delete lessons', 'err');
     }
   }
 
@@ -428,24 +471,67 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
                 All Lessons
               </p>
               <div style={{display:'flex', gap:8}}>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setShowLessonDayConfig(true)}
-                >
-                  Set Lesson Day
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setShowCustomGenerate(true)}
-                >
-                  🔄 Generate Lessons
-                </button>
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={() => setCreatingLesson(true)}
-                >
-                  + Add Lesson
-                </button>
+                {bulkDeleteMode ? (
+                  <>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={selectAllLessons}
+                    >
+                      Select All
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={deselectAllLessons}
+                    >
+                      Deselect All
+                    </button>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={bulkDeleteLessons}
+                      disabled={selectedLessons.size === 0}
+                    >
+                      Delete {selectedLessons.size > 0 ? `(${selectedLessons.size})` : ''}
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => {
+                        setBulkDeleteMode(false);
+                        setSelectedLessons(new Set());
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {lessons.length > 0 && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setBulkDeleteMode(true)}
+                      >
+                        Bulk Delete
+                      </button>
+                    )}
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setShowLessonDayConfig(true)}
+                    >
+                      Set Lesson Day
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setShowCustomGenerate(true)}
+                    >
+                      🔄 Generate Lessons
+                    </button>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() => setCreatingLesson(true)}
+                    >
+                      + Add Lesson
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -656,10 +742,32 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
               <div
                 key={l.id}
                 className="card"
-                style={{padding:"16px 20px",marginBottom:10,display:"flex",alignItems:"center",gap:15}}
+                style={{
+                  padding:"16px 20px",
+                  marginBottom:10,
+                  display:"flex",
+                  alignItems:"center",
+                  gap:15,
+                  background: bulkDeleteMode && selectedLessons.has(l.id) ? c.bg : 'var(--white)',
+                  border: bulkDeleteMode && selectedLessons.has(l.id) ? `2px solid ${c.text}` : '1px solid var(--paper2)',
+                  transition: 'all 0.15s ease'
+                }}
               >
+                {bulkDeleteMode && (
+                  <input
+                    type="checkbox"
+                    checked={selectedLessons.has(l.id)}
+                    onChange={() => toggleLessonSelection(l.id)}
+                    style={{
+                      width:18,
+                      height:18,
+                      cursor:'pointer',
+                      accentColor: c.text
+                    }}
+                  />
+                )}
                 <div
-                  onClick={() => onOpenLesson(l)}
+                  onClick={() => bulkDeleteMode ? toggleLessonSelection(l.id) : onOpenLesson(l)}
                   style={{flex:1,cursor:"pointer",display:"flex",gap:15,alignItems:"center"}}
                 >
                   <div style={{minWidth:50,textAlign:"center",padding:"7px 10px",background:c.bg,borderRadius:8}}>
@@ -676,15 +784,17 @@ export default function ModulePage({ mod, userId, onBack, onUpdate, onOpenLesson
                     </div>
                   </div>
                 </div>
-                <button
-                  className="btn btn-danger btn-sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteLesson(l.id);
-                  }}
-                >
-                  Delete
-                </button>
+                {!bulkDeleteMode && (
+                  <button
+                    className="btn btn-danger btn-sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteLesson(l.id);
+                    }}
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             ))}
           </div>
